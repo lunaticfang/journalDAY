@@ -10,6 +10,19 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState("");
 
+  // helper: convert File -> base64 string (no external libs)
+  const fileToBase64 = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(",")[1] ?? "";
+        resolve(base64);
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
     if (!file) {
@@ -19,44 +32,39 @@ export default function UploadPage() {
     setStatus("Uploading...");
 
     try {
-      // sanitize filename to avoid spaces/parentheses/unexpected characters
-      const cleanName = (file.name || "file.pdf").replace(/[^\w.\-]/g, "_");
-      const filePath = `issues/${Date.now()}-${cleanName}`;
+      // --- SERVER-UPLOAD FLOW (use service-role on server) ---
+      // Convert file to base64 and send to our server endpoint which uploads + inserts
+      const base64 = await fileToBase64(file);
+      setStatus("Uploading to server...");
 
-      // log for debugging
-      console.log("Uploading file:", { name: file.name, cleanName, size: file.size, type: file.type, filePath });
-
-      // Upload to storage with safer options (upsert to avoid conflicts while debugging,
-      // set contentType explicitly)
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from("issues-pdfs")
-        .upload(filePath, file, { cacheControl: "3600", upsert: true, contentType: file.type || "application/pdf" });
-
-      console.log("UPLOAD RESULT =>", { uploadData, uploadErr });
-      if (uploadErr) throw uploadErr;
-
-      // get public URL
-      const { data: publicData } = supabase.storage.from("issues-pdfs").getPublicUrl(filePath);
-      const publicUrl = publicData.publicUrl;
-
-      // forward to server API to insert (server uses service_role)
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token ?? null;
-
-      const res = await fetch("/api/admin/insert-issue", {
+      const resp = await fetch("/api/admin/upload-file", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ title, pdf_path: publicUrl, published_at: new Date().toISOString() }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentBase64: base64,
+          contentType: file.type || "application/pdf",
+          title,
+          published_at: new Date().toISOString(),
+        }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Insert failed");
+      const json = await resp.json();
+      if (!resp.ok) {
+        console.error("server upload error", json);
+        throw new Error(json?.error || JSON.stringify(json));
+      }
+
+      // server returns publicUrl and DB row; use it (no client-side DB insert)
+      const publicUrl = json.publicUrl;
+      console.log("Server upload complete:", publicUrl);
 
       setStatus("Uploaded ✔ — redirecting...");
       setTimeout(() => router.push("/admin"), 900);
+      return;
+      // --- end SERVER-UPLOAD FLOW ---
     } catch (err: any) {
       console.error(err);
-      // If uploadErr from supabase contains message details, prefer that
       const msg =
         err?.message ||
         (err?.error && (err.error.message || JSON.stringify(err.error))) ||
