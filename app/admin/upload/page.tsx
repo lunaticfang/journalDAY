@@ -24,54 +24,70 @@ export default function UploadPage() {
     });
 
   async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) {
-      setStatus("Select a PDF first");
-      return;
-    }
-    setStatus("Uploading...");
-
-    try {
-      // --- SERVER-UPLOAD FLOW (use service-role on server) ---
-      // Convert file to base64 and send to our server endpoint which uploads + inserts
-      const base64 = await fileToBase64(file);
-      setStatus("Uploading to server...");
-
-      const resp = await fetch("/api/admin/upload-file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          contentBase64: base64,
-          contentType: file.type || "application/pdf",
-          title,
-          published_at: new Date().toISOString(),
-        }),
-      });
-
-      const json = await resp.json();
-      if (!resp.ok) {
-        console.error("server upload error", json);
-        throw new Error(json?.error || JSON.stringify(json));
-      }
-
-      // server returns publicUrl and DB row; use it (no client-side DB insert)
-      const publicUrl = json.publicUrl;
-      console.log("Server upload complete:", publicUrl);
-
-      setStatus("Uploaded ✔ — redirecting...");
-      setTimeout(() => router.push("/admin"), 900);
-      return;
-      // --- end SERVER-UPLOAD FLOW ---
-    } catch (err: any) {
-      console.error(err);
-      const msg =
-        err?.message ||
-        (err?.error && (err.error.message || JSON.stringify(err.error))) ||
-        String(err);
-      setStatus("Error: " + msg);
-    }
+  e.preventDefault();
+  if (!file || !title) {
+    setStatus("Provide a title and select a PDF file.");
+    return;
   }
+
+  setStatus("Checking authentication...");
+
+  // get authenticated user
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData?.user?.id ?? null;
+
+  if (!userId) {
+    setStatus("You must be logged in to upload.");
+    return;
+  }
+
+  setStatus("Uploading file to Supabase...");
+
+  const cleanName = file.name.replace(/[^\w.\-]/g, "_");
+  const storagePath = `manuscripts/${Date.now()}-${cleanName}`;
+
+  // upload directly to Supabase Storage
+  const { data: uploadData, error: uploadErr } = await supabase.storage
+    .from(process.env.NEXT_PUBLIC_SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts")
+    .upload(storagePath, file, {
+      cacheControl: "3600",
+      upsert: false,
+      metadata: { uploader_id: userId },
+      contentType: file.type || "application/pdf",
+    });
+
+  if (uploadErr) {
+    console.error(uploadErr);
+    setStatus("Upload failed: " + uploadErr.message);
+    return;
+  }
+
+  setStatus("Telling server to record manuscript...");
+
+  // notify server to create manuscript + version
+  const resp = await fetch("/api/submissions/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title,
+      abstract: "",
+      authors: [],
+      file_storage_path: uploadData.path,
+      contentType: file.type,
+      uploader_id: userId,
+    }),
+  });
+
+  const json = await resp.json();
+  if (!resp.ok) {
+    setStatus("Server error: " + json.error);
+    return;
+  }
+
+  setStatus("Uploaded successfully!");
+  setTimeout(() => router.push("/admin"), 800);
+}
+
 
   return (
     <main className="p-6 max-w-2xl mx-auto">
