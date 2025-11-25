@@ -1,12 +1,14 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useParams } from "next/navigation";
+import { useParams } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
 
 type Issue = {
   id: string;
-  title: string | null;
+  title: string;
   volume: string | null;
   issue_number: number | null;
   published_at: string | null;
@@ -15,235 +17,250 @@ type Issue = {
 };
 
 type Article = {
-  id: string;
-  title: string | null;
+  id: string;               // now equals manuscript id for newly published issues
+  issue_id: string | null;
+  title: string;
   abstract: string | null;
   authors: string | null;
-  pdf_path: string | null;
+  pdf_path: string | null;  // unused for PDF, but fine to keep
 };
 
-function formatAuthors(authors: string | null) {
-  if (!authors) return "";
-  try {
-    const parsed = JSON.parse(authors);
-    if (Array.isArray(parsed)) return parsed.join(", ");
-  } catch {
-    /* ignore */
-  }
-  return authors;
-}
+export default function IssuePage() {
+  const params = useParams<{ id: string }>();
 
-export default function IssueDetailPage() {
-  const router = useRouter();
-  const params = useParams();
-  const issueId = (params?.id as string) || "";
+  const rawId = params?.id;
+  const id =
+    typeof rawId === "string"
+      ? rawId
+      : Array.isArray(rawId)
+      ? rawId[0]
+      : undefined;
 
   const [issue, setIssue] = useState<Issue | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // 🔹 same logic as admin's View PDF, but for articles
+  async function handleViewPdf(articleId: string) {
+    try {
+      setErrorMsg("");
+      const resp = await fetch(`/api/submissions/${articleId}/signed-url`);
+      const json = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(json?.error || "Could not get signed URL");
+      }
+      const url = json?.signedUrl || json?.publicUrl;
+      if (!url) {
+        throw new Error("No signed URL returned for this article");
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      console.error("IssuePage handleViewPdf error:", err);
+      setErrorMsg(err.message || String(err));
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setErrorMsg(null);
 
-    (async () => {
-      if (!issueId) {
-        setErrorMsg("Invalid issue id");
+      if (!id) {
+        setErrorMsg("Invalid issue id in URL.");
         setLoading(false);
         return;
       }
 
-      try {
-        setLoading(true);
-        setErrorMsg("");
+      // 1) load issue
+      const { data: issueData, error: issueError } = await supabase
+        .from("issues")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
 
-        const resp = await fetch(`/api/issues/${issueId}`);
-        const json = await resp.json();
-
-        if (!resp.ok) {
-          throw new Error(json?.error || "Failed to load issue");
-        }
-
-        if (!cancelled) {
-          setIssue(json.issue);
-          setArticles(json.articles || []);
-        }
-      } catch (err: any) {
-        console.error(err);
-        if (!cancelled) setErrorMsg(err.message || String(err));
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (issueError) {
+        setErrorMsg("Issue load error: " + issueError.message);
+        setIssue(null);
+        setArticles([]);
+        setLoading(false);
+        return;
       }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [issueId]);
+      if (!issueData) {
+        setErrorMsg("Issue not found in database for id: " + id);
+        setIssue(null);
+        setArticles([]);
+        setLoading(false);
+        return;
+      }
+
+      setIssue(issueData as Issue);
+
+      // 2) load articles
+      const { data: articleData, error: articleError } = await supabase
+        .from("articles")
+        .select("*")
+        .eq("issue_id", id)
+        .order("created_at", { ascending: true });
+
+      if (articleError) {
+        setErrorMsg("Articles load error: " + articleError.message);
+        setArticles([]);
+      } else {
+        setArticles((articleData || []) as Article[]);
+      }
+
+      setLoading(false);
+    }
+
+    load();
+  }, [id]);
 
   if (loading) {
     return (
-      <main>
-        <p>Loading issue…</p>
+      <main className="min-h-screen bg-[#050816] text-gray-100">
+        <div className="mx-auto max-w-6xl px-4 py-8">Loading…</div>
       </main>
     );
   }
 
-  if (errorMsg && !issue) {
+  if (errorMsg || !issue) {
     return (
-      <main>
-        <p style={{ color: "crimson" }}>Error: {errorMsg}</p>
-        <p>
-          <button onClick={() => router.push("/issues")}>Back to issues</button>
-        </p>
+      <main className="min-h-screen bg-[#050816] text-gray-100">
+        <div className="mx-auto max-w-6xl px-4 py-8">
+          <div className="mb-4 text-sm">
+            <Link href="/archive" className="text-emerald-400 hover:underline">
+              ← Back to Archive
+            </Link>
+          </div>
+          <p className="text-sm text-red-400 whitespace-pre-wrap">
+            DEBUG: {errorMsg || "Issue missing"}
+          </p>
+        </div>
       </main>
     );
   }
 
-  if (!issue) {
-    return (
-      <main>
-        <p>Issue not found.</p>
-        <p>
-          <button onClick={() => router.push("/issues")}>Back to issues</button>
-        </p>
-      </main>
-    );
-  }
-
-  const labelParts: string[] = [];
-  if (issue.volume) labelParts.push(`Vol. ${issue.volume}`);
-  if (issue.issue_number != null) labelParts.push(`Issue ${issue.issue_number}`);
-  const label = labelParts.join(" · ");
-
-  const dateText = issue.published_at
-    ? new Date(issue.published_at).toLocaleDateString()
+  const pubDate = issue.published_at ? new Date(issue.published_at) : null;
+  const monthYear = pubDate
+    ? pubDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })
     : "";
+  const volumeIssueText = [
+    issue.volume ? `Volume ${issue.volume}` : null,
+    issue.issue_number != null ? `Issue ${issue.issue_number}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
-    <main>
-      <p style={{ marginBottom: 8 }}>
-        <Link href="/issues" style={{ fontSize: 14, textDecoration: "underline" }}>
-          ← Back to issues
-        </Link>
-      </p>
-
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 2.1fr) minmax(0, 1.4fr)",
-          gap: 24,
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>
-            {issue.title || "Issue"}
-          </h1>
-          <p style={{ fontSize: 14, color: "#4b5563", marginBottom: 6 }}>
-            {label}
-            {label && dateText ? " · " : ""}
-            {dateText}
-          </p>
-          {issue.pdf_path && (
-            <p style={{ marginTop: 10 }}>
-              <a
-                href={issue.pdf_path}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "#2563eb", textDecoration: "underline" }}
-              >
-                Download full issue PDF →
-              </a>
-            </p>
-          )}
+    <main className="min-h-screen bg-[#050816] text-gray-100">
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        {/* Back link */}
+        <div className="mb-4 text-sm text-gray-300">
+          <Link href="/archive" className="text-emerald-400 hover:underline">
+            ← Back to Archive
+          </Link>
         </div>
 
-        {issue.cover_url && (
-          <div
-            style={{
-              justifySelf: "end",
-              maxWidth: 220,
-              width: "100%",
-              borderRadius: 12,
-              overflow: "hidden",
-              border: "1px solid #e5e7eb",
-              background: "white",
-            }}
-          >
-            <img
-              src={issue.cover_url}
-              alt={issue.title || "Issue cover"}
-              style={{
-                width: "100%",
-                display: "block",
-                objectFit: "cover",
-              }}
-            />
+        {/* Header */}
+        <div className="mb-8 flex flex-col gap-6 md:flex-row md:items-start">
+          <div className="flex-shrink-0">
+            <div className="flex h-48 w-36 items-center justify-center overflow-hidden rounded-md border border-gray-700 bg-gray-900">
+              {issue.cover_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={issue.cover_url}
+                  alt={issue.title}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-xs text-gray-400">No Cover</span>
+              )}
+            </div>
           </div>
-        )}
-      </section>
 
-      <section>
-        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 10 }}>
-          Table of Contents
-        </h2>
-
-        {articles.length === 0 && <p>No articles linked to this issue yet.</p>}
-
-        <div
-          style={{
-            borderRadius: 12,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            overflow: "hidden",
-          }}
-        >
-          {articles.map((a, idx) => (
-            <div
-              key={a.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 16,
-                padding: "10px 14px",
-                borderTop: idx === 0 ? "none" : "1px solid #f3f4f6",
-              }}
-            >
-              <div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-semibold tracking-wide">
+              {issue.title}
+            </h1>
+            {monthYear && (
+              <p className="text-sm text-gray-300">{monthYear}</p>
+            )}
+            {volumeIssueText && (
+              <p className="text-sm text-gray-300">{volumeIssueText}</p>
+            )}
+            {issue.pdf_path && (
+              <p className="pt-2 text-sm">
                 <Link
-                  href={`/article/${a.id}`}
-                  style={{
-                    fontWeight: 600,
-                    fontSize: 14,
-                    color: "#111827",
-                    textDecoration: "none",
-                  }}
+                  href={issue.pdf_path}
+                  className="text-emerald-400 hover:text-emerald-300"
                 >
-                  {a.title || "Untitled article"}
+                  Download full issue PDF
                 </Link>
-                {a.authors && (
-                  <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-                    {formatAuthors(a.authors)}
-                  </div>
-                )}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Section header */}
+        <div className="mb-4 border-b border-gray-700">
+          <button className="border-b-2 border-emerald-400 px-4 pb-2 text-sm font-semibold uppercase tracking-wide">
+            Articles
+          </button>
+        </div>
+
+        {/* Article list */}
+        <div className="space-y-4">
+          {articles.map((article, index) => (
+            <div
+              key={article.id}
+              className="flex gap-4 border-b border-gray-800 pb-4 text-sm last:border-none"
+            >
+              <div className="w-10 pt-1 text-xs font-semibold text-gray-300">
+                p{index + 1}
               </div>
-              <div style={{ whiteSpace: "nowrap", fontSize: 13 }}>
-                {a.pdf_path && (
-                  <a
-                    href={a.pdf_path}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: "#2563eb", textDecoration: "underline" }}
-                  >
-                    PDF
-                  </a>
+              <div className="flex-1 space-y-1">
+                <h2 className="text-sm font-semibold leading-snug text-gray-100">
+                  {article.title}
+                </h2>
+                {article.authors && (
+                  <p className="text-xs text-gray-300">{article.authors}</p>
                 )}
+                <div className="mt-1 flex gap-3">
+                  {/* View article detail page */}
+                  <Link
+                    href={`/article/${article.id}`}
+                    className="text-xs text-blue-300 hover:text-blue-200 underline"
+                  >
+                    View article
+                  </Link>
+
+                  {/* View PDF using same signed-url logic as admin */}
+                  <button
+                    onClick={() => handleViewPdf(article.id)}
+                    className="text-xs font-semibold text-emerald-400 hover:text-emerald-300"
+                    type="button"
+                  >
+                    View PDF
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
-      </section>
+
+        {articles.length === 0 && (
+          <p className="mt-6 text-sm text-gray-400">
+            No articles found for this issue.
+          </p>
+        )}
+
+        {errorMsg && (
+          <p className="mt-4 text-xs text-red-400">PDF error: {errorMsg}</p>
+        )}
+      </div>
     </main>
   );
 }

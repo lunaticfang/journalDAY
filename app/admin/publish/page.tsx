@@ -9,6 +9,10 @@ type Manuscript = {
   title: string | null;
   status: string | null;
   created_at: string | null;
+  // optional authors or pdf refs if you ever add them
+  authors?: string | null;
+  pdf_path?: string | null;
+  file_storage_path?: string | null;
 };
 
 const ISSUE_BUCKET =
@@ -63,7 +67,7 @@ export default function PublishIssuePage() {
           throw new Error(json?.error || "Failed to load manuscripts");
         }
 
-        setManuscripts(json.manuscripts || []);
+        setManuscripts((json.manuscripts || []) as Manuscript[]);
       } catch (err: any) {
         console.error(err);
         setStatusMsg(err.message || String(err));
@@ -81,6 +85,104 @@ export default function PublishIssuePage() {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
+  }
+
+  // Helper: fetch latest manuscript_version row for a manuscript id (if available)
+  async function fetchLatestManuscriptVersion(
+    manuscriptId: string
+  ): Promise<any | null> {
+    try {
+      const { data, error } = await supabase
+        .from("manuscript_versions")
+        .select("*")
+        .eq("manuscript_id", manuscriptId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.warn("manuscript_versions query failed:", error.message);
+        return null;
+      }
+
+      return (data && data[0]) || null;
+    } catch (err) {
+      console.warn("Failed to query manuscript_versions:", err);
+      return null;
+    }
+  }
+
+  // Create article rows in `articles` for each selected manuscript
+  async function createArticlesForManuscripts(issueId: string) {
+    if (!issueId || selectedIds.length === 0) return;
+
+    try {
+      // 1) load manuscript titles/authors in bulk
+      const { data: msData, error: msErr } = await supabase
+        .from("manuscripts")
+        .select("id, title, authors, pdf_path, file_storage_path")
+        .in("id", selectedIds);
+
+      if (msErr) {
+        console.warn(
+          "Failed to load manuscripts for article creation:",
+          msErr.message
+        );
+        return;
+      }
+
+      const manuscriptsFound = (msData || []) as Manuscript[];
+      const articleRows: any[] = [];
+
+      for (const m of manuscriptsFound) {
+        let pdfPath: string | null =
+          m.pdf_path ?? m.file_storage_path ?? null;
+
+        // If no direct pdfPath on manuscript, try latest version row
+        if (!pdfPath) {
+          const latestVersion = await fetchLatestManuscriptVersion(m.id);
+          if (latestVersion) {
+            pdfPath =
+              latestVersion.file_storage_path ||
+              latestVersion.storage_path ||
+              latestVersion.pdf_path ||
+              latestVersion.path ||
+              latestVersion.s3_path ||
+              latestVersion.url ||
+              null;
+          }
+        }
+
+        articleRows.push({
+          issue_id: issueId,
+          title: m.title ?? "(untitled)",
+          abstract: null,
+          authors: m.authors ?? null,
+          pdf_path: pdfPath,
+        });
+      }
+
+      if (articleRows.length === 0) return;
+
+      // 3) Insert article rows (bulk insert)
+      const { error: insertErr } = await supabase
+        .from("articles")
+        .insert(articleRows);
+
+      if (insertErr) {
+        console.warn("Failed to insert articles:", insertErr.message);
+        setStatusMsg(
+          `Issue published, but failed to create article entries: ${insertErr.message}`
+        );
+        return;
+      }
+
+      setStatusMsg("Issue published and articles created successfully.");
+    } catch (err: any) {
+      console.error("Error creating articles from manuscripts:", err);
+      setStatusMsg(
+        "Issue published, but error creating articles: " + err?.message
+      );
+    }
   }
 
   async function handlePublish(e: React.FormEvent) {
@@ -123,7 +225,7 @@ export default function PublishIssuePage() {
         pdfPublicUrl = publicData?.publicUrl ?? null;
       }
 
-      // 2) Create issue + article rows on server
+      // 2) Create issue on server
       const issueNumberInt =
         issueNumber.trim() === "" ? null : Number(issueNumber);
 
@@ -154,10 +256,38 @@ export default function PublishIssuePage() {
         throw new Error(json?.error || "Failed to publish issue");
       }
 
-      setStatusMsg("Issue published successfully.");
-      if (json.issue?.id) {
-        setTimeout(() => router.push(`/issues/${json.issue.id}`), 800);
+      // 3) Determine issueId (prefer server response)
+      let issueId =
+        (json?.issue?.id as string | undefined) ??
+        ""; // TS-safe initial value
+
+      if (!issueId) {
+        const { data: created, error: findErr } = await supabase
+          .from("issues")
+          .select("id")
+          .eq("title", title)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (findErr || !created || created.length === 0) {
+          throw new Error("Issue published but could not determine issue ID.");
+        }
+
+        issueId = created[0].id as string;
       }
+
+      if (!issueId) {
+        throw new Error("Issue ID is missing after publishing.");
+      }
+
+      // 4) Create article rows from selected manuscripts (best-effort)
+      await createArticlesForManuscripts(issueId);
+
+      // 5) Redirect to issue page
+      setStatusMsg("Issue published successfully.");
+      setTimeout(() => {
+        router.push(`/issues/${issueId}`);
+      }, 800);
     } catch (err: any) {
       console.error(err);
       setStatusMsg("Error: " + (err.message || String(err)));
@@ -181,9 +311,7 @@ export default function PublishIssuePage() {
         style={{ display: "grid", gap: 14, marginBottom: 20 }}
       >
         <div>
-          <label
-            style={{ display: "block", fontSize: 14, marginBottom: 4 }}
-          >
+          <label style={{ display: "block", fontSize: 14, marginBottom: 4 }}>
             Issue title *
           </label>
           <input
@@ -202,9 +330,7 @@ export default function PublishIssuePage() {
 
         <div style={{ display: "flex", gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <label
-              style={{ display: "block", fontSize: 14, marginBottom: 4 }}
-            >
+            <label style={{ display: "block", fontSize: 14, marginBottom: 4 }}>
               Volume
             </label>
             <input
@@ -221,9 +347,7 @@ export default function PublishIssuePage() {
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label
-              style={{ display: "block", fontSize: 14, marginBottom: 4 }}
-            >
+            <label style={{ display: "block", fontSize: 14, marginBottom: 4 }}>
               Issue number
             </label>
             <input
@@ -240,9 +364,7 @@ export default function PublishIssuePage() {
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label
-              style={{ display: "block", fontSize: 14, marginBottom: 4 }}
-            >
+            <label style={{ display: "block", fontSize: 14, marginBottom: 4 }}>
               Published date
             </label>
             <input
@@ -261,9 +383,7 @@ export default function PublishIssuePage() {
         </div>
 
         <div>
-          <label
-            style={{ display: "block", fontSize: 14, marginBottom: 4 }}
-          >
+          <label style={{ display: "block", fontSize: 14, marginBottom: 4 }}>
             Cover image URL
           </label>
           <input
@@ -281,18 +401,14 @@ export default function PublishIssuePage() {
         </div>
 
         <div>
-          <label
-            style={{ display: "block", fontSize: 14, marginBottom: 4 }}
-          >
+          <label style={{ display: "block", fontSize: 14, marginBottom: 4 }}>
             Full issue PDF (optional)
           </label>
           <input
             type="file"
             accept="application/pdf"
             onChange={(e) =>
-              setIssuePdfFile(
-                (e.target as HTMLInputElement).files?.[0] ?? null
-              )
+              setIssuePdfFile((e.target as HTMLInputElement).files?.[0] ?? null)
             }
           />
           <p style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>

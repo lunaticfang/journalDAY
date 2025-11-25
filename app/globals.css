@@ -1,3 +1,8 @@
+/* Tailwind layers MUST be at the top */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* app/globals.css - basic theme vars and body styles */
 
 :root {

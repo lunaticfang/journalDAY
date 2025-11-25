@@ -1,11 +1,3 @@
-
-
-
-
-
-
-
-
 // pages/api/articles/[id].js
 import { supabaseServer } from "../../../lib/supabaseServer";
 
@@ -23,9 +15,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid article id" });
     }
 
+    // 1) Load article — IMPORTANT: include manuscript_id
     const { data: article, error: artErr } = await supabaseServer
       .from("articles")
-      .select("id, title, abstract, authors, pdf_path, issue_id, created_at")
+      .select(
+        "id, title, abstract, authors, pdf_path, manuscript_id, issue_id, created_at"
+      )
       .eq("id", articleId)
       .maybeSingle();
 
@@ -34,9 +29,10 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "Article not found" });
     }
 
+    // 2) Load parent issue INCLUDING pdf_path
     const { data: issue, error: issueErr } = await supabaseServer
       .from("issues")
-      .select("id, title, volume, issue_number, published_at")
+      .select("id, title, volume, issue_number, published_at, pdf_path")
       .eq("id", article.issue_id)
       .maybeSingle();
 
@@ -48,10 +44,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: err.message || String(err) });
   }
 }
-
-
-
-
-
-
-
