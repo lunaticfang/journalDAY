@@ -1,14 +1,13 @@
+// pages/api/submissions/create.js
 import { supabaseServer } from "../../../lib/supabaseServer";
-
 
 export const config = {
   api: {
-    bodyParser: false, // IMPORTANT: we handle multipart manually
+    bodyParser: {
+      sizeLimit: "1mb",
+    },
   },
 };
-
-const BUCKET =
-  process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,53 +15,28 @@ export default async function handler(req, res) {
   }
 
   try {
-    /* -------------------------------------------------- */
-    /* 1. Parse multipart form                            */
-    /* -------------------------------------------------- */
-    const form = formidable({ multiples: false });
+    const {
+      title,
+      abstract,
+      file_storage_path,
+      uploader_id,
+    } = req.body || {};
 
-    const { fields, files } = await new Promise((resolve, reject) => {
-      form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        else resolve({ fields, files });
-      });
-    });
-
-    const title = fields.title?.toString();
-    const abstract = fields.abstract?.toString() || null;
-    const file = files.file;
-
-    if (!title || !file) {
+    if (!title || !file_storage_path || !uploader_id) {
       return res.status(400).json({
-        error: "Missing title or PDF file",
+        error: "Missing title, file_storage_path, or uploader_id",
       });
     }
 
-    /* -------------------------------------------------- */
-    /* 2. Upload PDF to Supabase Storage (SERVER)         */
-    /* -------------------------------------------------- */
-    const cleanName = file.originalFilename.replace(/[^\w.\-]/g, "_");
-    const storagePath = `manuscripts/${Date.now()}-${cleanName}`;
-
-    const buffer = fs.readFileSync(file.filepath);
-
-    const { error: uploadErr } = await supabaseServer.storage
-      .from(BUCKET)
-      .upload(storagePath, buffer, {
-        contentType: "application/pdf",
-        upsert: false,
-      });
-
-    if (uploadErr) throw uploadErr;
-
-    /* -------------------------------------------------- */
-    /* 3. Create manuscript                               */
-    /* -------------------------------------------------- */
+    /* ---------------------------------------------------- */
+    /* 1. Create manuscript                                  */
+    /* ---------------------------------------------------- */
     const { data: manuscript, error: mErr } = await supabaseServer
       .from("manuscripts")
       .insert({
         title,
-        abstract,
+        abstract: abstract ?? null,
+        uploader_id,
         status: "submitted",
       })
       .select()
@@ -70,23 +44,23 @@ export default async function handler(req, res) {
 
     if (mErr) throw mErr;
 
-    /* -------------------------------------------------- */
-    /* 4. Create manuscript version                       */
-    /* -------------------------------------------------- */
+    /* ---------------------------------------------------- */
+    /* 2. Create initial version                              */
+    /* ---------------------------------------------------- */
     const { data: version, error: vErr } = await supabaseServer
       .from("manuscript_versions")
       .insert({
         manuscript_id: manuscript.id,
-        file_path: storagePath,
+        file_path: file_storage_path,
       })
       .select()
       .single();
 
     if (vErr) throw vErr;
 
-    /* -------------------------------------------------- */
-    /* 5. Set current version                             */
-    /* -------------------------------------------------- */
+    /* ---------------------------------------------------- */
+    /* 3. Set current version                                 */
+    /* ---------------------------------------------------- */
     const { error: uErr } = await supabaseServer
       .from("manuscripts")
       .update({ current_version: version.id })
