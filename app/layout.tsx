@@ -1,5 +1,6 @@
 // app/layout.tsx
 import "./globals.css";
+import MainNav from "./components/MainNav";
 
 export const metadata = {
   title: "JournalDAY",
@@ -29,7 +30,7 @@ export default function RootLayout({
             flexDirection: "column",
           }}
         >
-          {/* Top nav */}
+          {/* Top navigation header */}
           <header
             style={{
               position: "sticky",
@@ -50,6 +51,7 @@ export default function RootLayout({
                 justifyContent: "space-between",
               }}
             >
+              {/* Brand */}
               <a
                 href="/"
                 style={{
@@ -60,45 +62,11 @@ export default function RootLayout({
                   color: "#111827",
                 }}
               >
-                JournalDAY
+                UpDAYtes
               </a>
 
-              <nav
-                style={{
-                  display: "flex",
-                  gap: 18,
-                  fontSize: 14,
-                }}
-              >
-                <a
-                  href="/issues"
-                  style={{ textDecoration: "none", color: "#374151" }}
-                >
-                  Issues
-                </a>
-                <a
-                  href="/author/submit"
-                  style={{ textDecoration: "none", color: "#374151" }}
-                >
-                  Submit
-                </a>
-                <a
-                  href="/author/dashboard"
-                  style={{ textDecoration: "none", color: "#374151" }}
-                >
-                  My Submissions
-                </a>
-                <a
-                  href="/admin"
-                  style={{
-                    textDecoration: "none",
-                    color: "#4b5563",
-                    fontWeight: 500,
-                  }}
-                >
-                  Admin
-                </a>
-              </nav>
+              {/* Client-side navigation */}
+              <MainNav />
             </div>
           </header>
 
@@ -122,7 +90,7 @@ export default function RootLayout({
             }}
           >
             <div style={{ maxWidth: 1120, margin: "0 auto" }}>
-              © {new Date().getFullYear()} JournalDAY · All rights reserved.
+              © {new Date().getFullYear()} UpDAYtes · All rights reserved.
             </div>
           </footer>
         </div>

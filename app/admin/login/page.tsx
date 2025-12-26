@@ -1,150 +1,150 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../../../lib/supabaseClient"; // path: app/admin/login -> ../../../lib
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
 
-export default function AdminLogin() {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(true);
+export default function AdminLoginPage() {
   const router = useRouter();
 
-  // Helper: ensure there's a profiles row for the user (creates if missing)
-  async function ensureProfileExists(user: { id: string; email?: string | null }) {
-    if (!user?.id) return null;
-    try {
-      // Try fetch existing profile
-      const { data } = await supabase.from("profiles").select("id, role, full_name").eq("id", user.id).maybeSingle();
-      if (data) return data;
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-      // Create a minimal profile record (default role = author)
-      const { data: upserted } = await supabase
-        .from("profiles")
-        .upsert({ id: user.id, email: user.email ?? null, role: "author" }, { onConflict: "id" })
-        .select()
-        .maybeSingle();
-
-      return upserted;
-    } catch (err) {
-      // don't block the flow if profile ops fail; return null and continue with default routing
-      console.error("ensureProfileExists error:", err);
-      return null;
-    }
-  }
-
-  // When the page loads, check if user already signed in (e.g., after clicking magic link)
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        setLoading(true);
-        // get current session user (works after magic-link redirect)
-        const { data: userData } = await supabase.auth.getUser();
-
-        const user = userData?.user ?? null;
-        if (!user) {
-          // no user signed in yet
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        // ensure profile exists and fetch role
-        const profile = await ensureProfileExists({ id: user.id, email: user.email });
-
-        // role-aware redirect
-        const role = profile?.role ?? "author";
-        if (role === "editor" || profile?.is_editor) {
-          router.replace("/admin");
-        } else if (role === "author") {
-          router.replace("/author/dashboard");
-        } else {
-          router.replace("/author/submit");
-        }
-      } catch (err) {
-        console.error(err);
-        if (mounted) {
-          setStatus("Error verifying session. Try signing in again.");
-          setLoading(false);
-        }
-      }
-    })();
-
-    // also listen to auth state changes (optional; helps if session is created after page load)
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user ?? null;
-      if (!user) {
-        // if user signed out
-        return;
-      }
-      // when auth state changes to signed-in, ensure profile and redirect
-      (async () => {
-        const profile = await ensureProfileExists({ id: user.id, email: user.email });
-        const role = profile?.role ?? "author";
-        if (role === "editor" || profile?.is_editor) {
-          router.replace("/admin");
-        } else if (role === "author") {
-          router.replace("/author/dashboard");
-        } else {
-          router.replace("/author/submit");
-        }
-      })();
-    });
-
-    return () => {
-      mounted = false;
-      sub?.subscription?.unsubscribe?.();
-    };
-  }, [router]);
-
-  async function handleMagicLink(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!email) {
-      setStatus("Enter an email");
-      return;
-    }
-    setStatus("Sending sign-in link...");
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: `${window.location.origin}/admin` },
-      });
-      if (error) setStatus("Error: " + error.message);
-      else setStatus("Check your email for the login link.");
-    } catch (err: any) {
-      console.error(err);
-      setStatus("Error sending link: " + (err.message || String(err)));
-    }
-  }
+    setErrorMsg(null);
+    setLoading(true);
 
-  if (loading) {
-    return (
-      <main style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 20, marginBottom: 12 }}>Admin sign in</h1>
-        <p>Checking session…</p>
-      </main>
-    );
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error || !data.user) {
+        throw error || new Error("Invalid credentials");
+      }
+
+      // IMPORTANT:
+      // Do NOT check role here.
+      // Do NOT create profile here.
+      // Do NOT redirect anywhere else.
+      // Admin authorization happens inside /admin.
+      router.replace("/admin");
+    } catch (err: any) {
+      console.error("Admin login error:", err);
+      setErrorMsg(err.message || "Failed to sign in");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 20, marginBottom: 12 }}>Admin sign in</h1>
-      <form onSubmit={handleMagicLink} style={{ display: "grid", gap: 10 }}>
-        <input
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="editor@example.com"
-          style={{ padding: 8, borderRadius: 6, border: "1px solid #ddd" }}
-        />
-        <button style={{ padding: "8px 12px", borderRadius: 6, background: "#0b74de", color: "white", border: "none" }}>
-          Send magic link
+    <main
+      style={{
+        maxWidth: 420,
+        margin: "80px auto",
+        padding: 24,
+        background: "#ffffff",
+        borderRadius: 8,
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: 22,
+          fontWeight: 600,
+          marginBottom: 6,
+          textAlign: "center",
+        }}
+      >
+        Admin Login
+      </h1>
+
+      <p
+        style={{
+          fontSize: 13,
+          color: "#6b7280",
+          marginBottom: 20,
+          textAlign: "center",
+        }}
+      >
+        Authorized administrators only
+      </p>
+
+      {errorMsg && (
+        <div
+          style={{
+            background: "#fee2e2",
+            color: "#991b1b",
+            padding: "8px 12px",
+            borderRadius: 6,
+            fontSize: 13,
+            marginBottom: 12,
+          }}
+        >
+          {errorMsg}
+        </div>
+      )}
+
+      <form onSubmit={handleLogin}>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 13 }}>Email</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 13 }}>Password</label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: "100%",
+            padding: "10px 0",
+            borderRadius: 6,
+            border: "none",
+            background: "#6A3291",
+            color: "white",
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: loading ? "not-allowed" : "pointer",
+          }}
+        >
+          {loading ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <p style={{ marginTop: 12, color: "#555" }}>{status}</p>
-      <p style={{ marginTop: 8 }}>
-        Back to <a href="/">home</a>.
+
+      <p style={{ marginTop: 10, fontSize: 13 }}>
+        <a href="/" style={{ color: "#6A3291" }}>
+          ← Back to home
+        </a>
       </p>
     </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  fontSize: 14,
+  borderRadius: 6,
+  border: "1px solid #d1d5db",
+  outline: "none",
+};
