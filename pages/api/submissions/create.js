@@ -14,20 +14,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { title, abstract, file_storage_path, uploader_id } = req.body || {};
+    const { title, abstract, file_storage_path, user_id } = req.body || {};
 
-    if (!title || !file_storage_path || !uploader_id) {
+    if (!title || !file_storage_path || !user_id) {
       return res.status(400).json({
-        error: "Missing title, file_storage_path, or uploader_id",
+        error: "Missing title, file_storage_path, or user_id",
       });
     }
 
+    /* ---------------------------------------------------- */
+    /* 1. Create manuscript (RLS-COMPLIANT)                 */
+    /* ---------------------------------------------------- */
     const { data: manuscript, error: mErr } = await supabaseServer
       .from("manuscripts")
       .insert({
         title,
         abstract: abstract ?? null,
-        uploader_id,
+
+        // 🔑 THESE TWO LINES FIX EVERYTHING
+        submitter_id: user_id,
+        author_id: user_id,
+
         status: "submitted",
       })
       .select()
@@ -35,6 +42,9 @@ export default async function handler(req, res) {
 
     if (mErr) throw mErr;
 
+    /* ---------------------------------------------------- */
+    /* 2. Create initial version                             */
+    /* ---------------------------------------------------- */
     const { data: version, error: vErr } = await supabaseServer
       .from("manuscript_versions")
       .insert({
@@ -46,12 +56,21 @@ export default async function handler(req, res) {
 
     if (vErr) throw vErr;
 
-    await supabaseServer
+    /* ---------------------------------------------------- */
+    /* 3. Set current version                                */
+    /* ---------------------------------------------------- */
+    const { error: uErr } = await supabaseServer
       .from("manuscripts")
       .update({ current_version: version.id })
       .eq("id", manuscript.id);
 
-    return res.status(200).json({ ok: true, manuscript, version });
+    if (uErr) throw uErr;
+
+    return res.status(200).json({
+      ok: true,
+      manuscript,
+      version,
+    });
   } catch (err) {
     console.error("create submission error:", err);
     return res.status(500).json({
