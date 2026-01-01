@@ -1,11 +1,10 @@
-// pages/api/submissions/create.js
+import formidable from "formidable";
+import fs from "fs";
 import { supabaseServer } from "../../../lib/supabaseServer";
 
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: "1mb",
-    },
+    bodyParser: false, // IMPORTANT
   },
 };
 
@@ -15,27 +14,45 @@ export default async function handler(req, res) {
   }
 
   try {
-    const {
-      title,
-      abstract,
-      file_storage_path,
-      uploader_id,
-    } = req.body || {};
+    const form = formidable({ multiples: false });
 
-    if (!title || !file_storage_path || !uploader_id) {
+    const { fields, files } = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) reject(err);
+        else resolve({ fields, files });
+      });
+    });
+
+    const title = fields.title?.[0];
+    const abstract = fields.abstract?.[0] || null;
+    const uploader_id = fields.uploader_id?.[0];
+    const file = files.file?.[0];
+
+    if (!title || !uploader_id || !file) {
       return res.status(400).json({
-        error: "Missing title, file_storage_path, or uploader_id",
+        error: "Missing title, uploader_id, or file",
       });
     }
 
-    /* ---------------------------------------------------- */
-    /* 1. Create manuscript                                  */
-    /* ---------------------------------------------------- */
+    const buffer = fs.readFileSync(file.filepath);
+    const cleanName = file.originalFilename.replace(/[^\w.\-]/g, "_");
+    const storagePath = `manuscripts/${Date.now()}-${cleanName}`;
+
+    // Upload PDF
+    const { error: uploadErr } = await supabaseServer.storage
+      .from("manuscripts")
+      .upload(storagePath, buffer, {
+        contentType: file.mimetype || "application/pdf",
+      });
+
+    if (uploadErr) throw uploadErr;
+
+    // Insert manuscript
     const { data: manuscript, error: mErr } = await supabaseServer
       .from("manuscripts")
       .insert({
         title,
-        abstract: abstract ?? null,
+        abstract,
         uploader_id,
         status: "submitted",
       })
@@ -44,39 +61,26 @@ export default async function handler(req, res) {
 
     if (mErr) throw mErr;
 
-    /* ---------------------------------------------------- */
-    /* 2. Create initial version                              */
-    /* ---------------------------------------------------- */
+    // Insert version
     const { data: version, error: vErr } = await supabaseServer
       .from("manuscript_versions")
       .insert({
         manuscript_id: manuscript.id,
-        file_path: file_storage_path,
+        file_path: storagePath,
       })
       .select()
       .single();
 
     if (vErr) throw vErr;
 
-    /* ---------------------------------------------------- */
-    /* 3. Set current version                                 */
-    /* ---------------------------------------------------- */
-    const { error: uErr } = await supabaseServer
+    await supabaseServer
       .from("manuscripts")
       .update({ current_version: version.id })
       .eq("id", manuscript.id);
 
-    if (uErr) throw uErr;
-
-    return res.status(200).json({
-      ok: true,
-      manuscript,
-      version,
-    });
+    return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("create submission error:", err);
-    return res.status(500).json({
-      error: err.message || String(err),
-    });
+    console.error(err);
+    return res.status(500).json({ error: err.message });
   }
 }
