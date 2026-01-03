@@ -32,14 +32,29 @@ export default function HomePage() {
   const [isOwner, setIsOwner] = useState(false);
 
   /* -------------------------------------------------- */
-  /* Auth + ownership check                              */
+  /* Auth + ownership check (FIXED)                      */
   /* -------------------------------------------------- */
   useEffect(() => {
+    let mounted = true;
+
+    // Initial check
     supabase.auth.getUser().then(({ data }) => {
-      if (data?.user?.email === OWNER_EMAIL) {
-        setIsOwner(true);
-      }
+      if (!mounted) return;
+      setIsOwner(data?.user?.email === OWNER_EMAIL);
     });
+
+    // React to auth changes (CRITICAL)
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setIsOwner(session?.user?.email === OWNER_EMAIL);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   /* -------------------------------------------------- */
@@ -50,7 +65,6 @@ export default function HomePage() {
 
     (async () => {
       try {
-        /* Latest issue */
         const { data: issues } = await supabase
           .from("issues")
           .select("id, title, volume, issue_number, published_at, cover_url")
@@ -58,12 +72,11 @@ export default function HomePage() {
           .limit(1);
 
         if (!issues || issues.length === 0) return;
-        const latest = issues[0];
         if (cancelled) return;
 
+        const latest = issues[0];
         setIssue(latest);
 
-        /* Articles */
         const { data: articleRows } = await supabase
           .from("articles")
           .select("id, title, authors")
@@ -85,7 +98,7 @@ export default function HomePage() {
 
   return (
     <div style={{ background: "#ffffff", color: "#111827" }}>
-      {/* Editor-in-Chief marquee */}
+      {/* Editor-in-Chief */}
       <section
         style={{
           background: "#f9f5ff",
@@ -145,7 +158,7 @@ export default function HomePage() {
               placeholder="UpDAYtes brings together peer-reviewed research and clinical perspectives."
             />
 
-            <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
+            <div style={{ marginTop: 18 }}>
               <Link
                 href="/author/submit"
                 style={{
@@ -242,6 +255,7 @@ export default function HomePage() {
     </div>
   );
 }
+
 
 
 /*
