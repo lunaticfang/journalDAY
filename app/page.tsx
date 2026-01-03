@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
+import EditableBlock from "./components/EditableBlock";
 
 const BRAND_PURPLE = "#6A3291";
 const OWNER_EMAIL = "updaytesjournal@gmail.com";
@@ -23,26 +24,12 @@ type Article = {
   authors: string | null;
 };
 
-type BannerContent = {
-  title: string;
-  subtitle: string;
-  cta: string;
-};
-
 export default function HomePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [banner, setBanner] = useState<BannerContent>({
-    title: "",
-    subtitle: "",
-    cta: "",
-  });
-
   const [isOwner, setIsOwner] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   /* -------------------------------------------------- */
   /* Auth + ownership check                              */
@@ -63,17 +50,6 @@ export default function HomePage() {
 
     (async () => {
       try {
-        /* Banner (JSON row) */
-        const { data: bannerRow } = await supabase
-          .from("site_content")
-          .select("value")
-          .eq("key", "homepage_banner")
-          .maybeSingle();
-
-        if (!cancelled && bannerRow?.value) {
-          setBanner(bannerRow.value as BannerContent);
-        }
-
         /* Latest issue */
         const { data: issues } = await supabase
           .from("issues")
@@ -107,24 +83,6 @@ export default function HomePage() {
     };
   }, []);
 
-  /* -------------------------------------------------- */
-  /* Save banner                                         */
-  /* -------------------------------------------------- */
-  async function saveBanner() {
-    setSaving(true);
-
-    await supabase
-      .from("site_content")
-      .upsert({
-        key: "homepage_banner",
-        value: banner,
-        updated_at: new Date().toISOString(),
-      });
-
-    setSaving(false);
-    setEditMode(false);
-  }
-
   return (
     <div style={{ background: "#ffffff", color: "#111827" }}>
       {/* Editor-in-Chief marquee */}
@@ -134,13 +92,14 @@ export default function HomePage() {
           borderTop: "1px solid #e5e7eb",
           borderBottom: "1px solid #e5e7eb",
           padding: "10px 0",
-          overflow: "hidden",
         }}
       >
         <div style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
-          <p style={{ fontSize: 20, fontWeight: 700 }}>
-            Editor-in-Chief: Prof. (Dr.) Satinath Mukhopadhyay
-          </p>
+          <EditableBlock
+            contentKey="home.editor_in_chief"
+            isEditor={isOwner}
+            placeholder="Editor-in-Chief: Prof. (Dr.) Satinath Mukhopadhyay"
+          />
         </div>
       </section>
 
@@ -174,43 +133,17 @@ export default function HomePage() {
               Featured
             </div>
 
-            {editMode ? (
-              <>
-                <textarea
-                  value={banner.title}
-                  onChange={(e) =>
-                    setBanner({ ...banner, title: e.target.value })
-                  }
-                  style={{ width: "100%", fontSize: 16, marginBottom: 8 }}
-                />
-                <textarea
-                  value={banner.subtitle}
-                  onChange={(e) =>
-                    setBanner({ ...banner, subtitle: e.target.value })
-                  }
-                  style={{ width: "100%", fontSize: 14, marginBottom: 8 }}
-                />
-                <input
-                  value={banner.cta}
-                  onChange={(e) =>
-                    setBanner({ ...banner, cta: e.target.value })
-                  }
-                  style={{ width: "100%" }}
-                />
-              </>
-            ) : (
-              <>
-                <h1 style={{ fontSize: 25, fontWeight: 500 }}>
-                  {banner.title}
-                </h1>
-                <p style={{ color: "#4b5563", fontSize: 15 }}>
-                  <span style={{ color: BRAND_PURPLE, fontWeight: 700 }}>
-                    UpDAYtes
-                  </span>{" "}
-                  {banner.subtitle}
-                </p>
-              </>
-            )}
+            <EditableBlock
+              contentKey="home.hero_title"
+              isEditor={isOwner}
+              placeholder="Advancing knowledge, awareness, understanding of metabolic health..."
+            />
+
+            <EditableBlock
+              contentKey="home.hero_subtitle"
+              isEditor={isOwner}
+              placeholder="UpDAYtes brings together peer-reviewed research and clinical perspectives."
+            />
 
             <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
               <Link
@@ -224,7 +157,7 @@ export default function HomePage() {
                   textDecoration: "none",
                 }}
               >
-                {banner.cta}
+                Submit an Article
               </Link>
             </div>
           </div>
@@ -245,32 +178,71 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Owner controls */}
-      {isOwner && (
-        <div
-          style={{
-            maxWidth: 1120,
-            margin: "0 auto 40px auto",
-            padding: "0 20px",
-          }}
-        >
-          {!editMode ? (
-            <button
-              onClick={() => setEditMode(true)}
-              style={{ color: BRAND_PURPLE }}
+      {/* Current Issue */}
+      <section style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
+        <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
+          Current Issue
+        </h2>
+
+        {loading && <p>Loading…</p>}
+
+        {!loading && issue && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "220px 1fr",
+              gap: 28,
+            }}
+          >
+            <img
+              src="/journal cover.jpg"
+              alt="Issue cover"
+              style={{
+                width: "100%",
+                borderRadius: 6,
+                border: "1px solid #e5e7eb",
+              }}
+            />
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 14,
+              }}
             >
-              ✏️ Edit homepage
-            </button>
-          ) : (
-            <button onClick={saveBanner} disabled={saving}>
-              {saving ? "Saving…" : "💾 Save changes"}
-            </button>
-          )}
-        </div>
-      )}
+              {articles.map((a) => (
+                <Link
+                  key={a.id}
+                  href={`/article/${a.id}`}
+                  style={{
+                    textDecoration: "none",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 6,
+                    padding: 12,
+                    background: "white",
+                  }}
+                >
+                  <h3 style={{ fontSize: 14, fontWeight: 700 }}>
+                    {a.title || "Untitled article"}
+                  </h3>
+                  {a.authors && (
+                    <p style={{ fontSize: 12, color: "#6b7280" }}>
+                      {a.authors}
+                    </p>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <div style={{ height: 48 }} />
     </div>
   );
 }
+
 
 /*
 
