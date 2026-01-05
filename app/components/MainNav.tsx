@@ -395,17 +395,18 @@ export default function MainNav() {
       {/* ---------- AUTH SECTION ---------- */}
 
       {!isLoggedIn && (
-        <Link
-          href="/admin/login"
-          style={{
-            ...navItemStyle,
-            fontWeight: 600,
-            color: "#6A3291",
-          }}
-        >
-          Sign in
-        </Link>
-      )}
+  <Link
+    href="/login"
+    style={{
+      ...navItemStyle,
+      fontWeight: 600,
+      color: "#6A3291",
+    }}
+  >
+    Sign in
+  </Link>
+)}
+
 
       {isLoggedIn && isAdmin && (
         <Link

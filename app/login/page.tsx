@@ -1,185 +1,74 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-type Profile = {
-  id: string;
-  role: "admin" | "author";
-  approved?: boolean | null;
-};
-
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("");
-  const [checking, setChecking] = useState(true);
-  const router = useRouter();
-
-  /* ------------------------------------------------------------------ */
-  /* Ensure profile exists (first login = signup)                        */
-  /* ------------------------------------------------------------------ */
-  async function ensureProfile(user: { id: string; email?: string | null }) {
-    if (!user?.id) return null;
-
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id, role, approved")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (existing) return existing as Profile;
-
-    const { data: created } = await supabase
-      .from("profiles")
-      .upsert(
-        {
-          id: user.id,
-          email: user.email ?? null,
-          role: "author", // default
-          approved: false,
-        },
-        { onConflict: "id" }
-      )
-      .select()
-      .maybeSingle();
-
-    return created as Profile | null;
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* Session check (magic link redirect)                                 */
-  /* ------------------------------------------------------------------ */
-  useEffect(() => {
-    let mounted = true;
-
-    async function handleSession() {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user ?? null;
-
-      if (!user) {
-        if (mounted) setChecking(false);
-        return;
-      }
-
-      const profile = await ensureProfile(user);
-      if (!mounted) return;
-
-      // Admins go to admin only if approved
-      if (profile?.role === "admin" && profile.approved === true) {
-        router.replace("/admin");
-      } else {
-        // All normal users land here
-        router.replace("/author/submit");
-      }
-    }
-
-    handleSession();
-
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const user = session?.user;
-        if (!user) return;
-
-        const profile = await ensureProfile(user);
-
-        if (profile?.role === "admin" && profile.approved === true) {
-          router.replace("/admin");
-        } else {
-          router.replace("/author/submit");
-        }
-      }
-    );
-
-    return () => {
-      mounted = false;
-      sub?.subscription?.unsubscribe();
-    };
-  }, [router]);
-
-  /* ------------------------------------------------------------------ */
-  /* Send magic link                                                     */
-  /* ------------------------------------------------------------------ */
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!email) {
-      setStatus("Please enter your email address.");
-      return;
-    }
-
-    setStatus("Sending sign-in link…");
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/login`,
-      },
-    });
-
-    if (error) {
-      setStatus(error.message);
-    } else {
-      setStatus("Check your email for the sign-in link.");
-    }
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* UI                                                                  */
-  /* ------------------------------------------------------------------ */
-  if (checking) {
-    return (
-      <main style={{ maxWidth: 600, margin: "40px auto" }}>
-        <p>Checking session…</p>
-      </main>
-    );
-  }
-
+export default function LoginChooserPage() {
   return (
-    <main style={{ maxWidth: 600, margin: "40px auto" }}>
-      <h1 style={{ fontSize: 22, marginBottom: 12 }}>
-        Sign in to <span style={{ color: "#6A3291" }}>UpDAYtes</span>
+    <main
+      style={{
+        maxWidth: 520,
+        margin: "80px auto",
+        padding: 24,
+        background: "#ffffff",
+        borderRadius: 8,
+        border: "1px solid #e5e7eb",
+        textAlign: "center",
+      }}
+    >
+      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 10 }}>
+        Sign in to UpDAYtes
       </h1>
 
-      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-        Sign in to submit manuscripts or manage your submissions.
+      <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 30 }}>
+        Choose how you want to continue
       </p>
 
-      <form onSubmit={handleLogin} style={{ display: "grid", gap: 12 }}>
-        <input
-          type="email"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+      <div style={{ display: "grid", gap: 14 }}>
+        {/* AUTHOR */}
+        <Link
+          href="/login/author"
           style={{
-            padding: 10,
+            display: "block",
+            padding: "14px 16px",
             borderRadius: 6,
-            border: "1px solid #d1d5db",
-            fontSize: 14,
-          }}
-        />
-
-        <button
-          type="submit"
-          style={{
-            padding: "10px 14px",
-            borderRadius: 6,
-            background: "#6A3291",
-            color: "white",
-            border: "none",
-            fontWeight: 600,
-            cursor: "pointer",
+            border: "1px solid #e5e7eb",
+            textDecoration: "none",
+            color: "#111827",
+            fontSize: 15,
           }}
         >
-          Send login link
-        </button>
-      </form>
+          <strong>Continue as Author</strong>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            Submit manuscripts and track submissions
+          </div>
+        </Link>
 
-      {status && (
-        <p style={{ marginTop: 12, fontSize: 13, color: "#374151" }}>
-          {status}
-        </p>
-      )}
+        {/* ADMIN */}
+        <Link
+          href="/admin/login"
+          style={{
+            display: "block",
+            padding: "14px 16px",
+            borderRadius: 6,
+            border: "1px solid #6A3291",
+            textDecoration: "none",
+            color: "#6A3291",
+            fontSize: 15,
+            fontWeight: 600,
+          }}
+        >
+          Continue as Admin
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+            Editorial & site management
+          </div>
+        </Link>
+      </div>
+
+      <p style={{ marginTop: 24, fontSize: 13 }}>
+        <Link href="/" style={{ color: "#6A3291" }}>
+          ← Back to home
+        </Link>
+      </p>
     </main>
   );
 }
