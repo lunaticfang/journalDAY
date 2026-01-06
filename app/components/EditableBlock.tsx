@@ -37,12 +37,14 @@ export default function EditableBlock({
   /* ---------------- Helper: convert plain text -> safe simple HTML ---------------- */
   function plainTextToParagraphs(text: string) {
     // preserve paragraphs, ignore empty lines
-    return text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => `<p>${line}</p>`)
-      .join("") || `<p>${text}</p>`;
+    return (
+      text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => `<p>${line}</p>`)
+        .join("") || `<p>${text}</p>`
+    );
   }
 
   /* ---------------- Load from DB (backward-compatible) ----------------
@@ -51,6 +53,7 @@ export default function EditableBlock({
        - text column containing JSON string (e.g. '{"html":"<p>...</p>"}')
        - plain text stored in text column
        - legacy { text: "..." } object
+       - broken legacy string containing `"html": "..."` (handled below)
   -------------------------------------------------------------------*/
   useEffect(() => {
     if (!editor) return;
@@ -87,7 +90,8 @@ export default function EditableBlock({
 
         if (typeof val === "string") {
           const trimmed = val.trim();
-          // attempt JSON.parse only if looks like JSON to avoid noisy exceptions
+
+          // 1) Looks like JSON object/array -> try parse
           if (
             (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
             (trimmed.startsWith("[") && trimmed.endsWith("]"))
@@ -95,11 +99,55 @@ export default function EditableBlock({
             try {
               parsed = JSON.parse(val);
             } catch (e) {
-              // not JSON — keep parsed as plain string
+              // fall back to plain string
               parsed = val;
             }
-          } else {
-            // definitely a plain string (not JSON)
+          }
+
+          // 2) Catch broken legacy strings containing "html": somewhere
+          else if (
+            trimmed.includes(`"html":`) ||
+            trimmed.includes(`'html':`) ||
+            trimmed.toLowerCase().includes("html\":")
+          ) {
+            // attempt to extract text after "html":
+            const matchDouble = trimmed.indexOf(`"html":`);
+            const matchSingle = trimmed.indexOf(`'html':`);
+            const idx = matchDouble >= 0 ? matchDouble : matchSingle >= 0 ? matchSingle : -1;
+
+            if (idx >= 0) {
+              // slice after the matched token
+              const token = matchDouble >= 0 ? `"html":` : `'html':`;
+              let extracted = trimmed.slice(idx + token.length).trim();
+
+              // remove leading colon/quotes/braces if present
+              extracted = extracted.replace(/^[:\s]*/, "");
+              // remove enclosing braces/trailing commas
+              // remove leading quote
+              if (extracted.startsWith('"') || extracted.startsWith("'")) {
+                // remove the first and last matching quote if present
+                extracted = extracted.replace(/^["']/, "");
+                // remove trailing quote then optional } or , or }
+                extracted = extracted.replace(/["']\s*[\},]?\s*$/, "");
+              } else {
+                // also strip trailing } or , if present
+                extracted = extracted.replace(/[\},]\s*$/, "");
+              }
+
+              // If extracted looks like HTML (contains <>), use as-is; otherwise convert to paragraphs
+              if (extracted.includes("<")) {
+                parsed = { html: extracted };
+              } else {
+                parsed = { html: plainTextToParagraphs(extracted) };
+              }
+            } else {
+              // fallback
+              parsed = val;
+            }
+          }
+
+          // 3) Plain string -> keep as-is
+          else {
             parsed = val;
           }
         }
