@@ -17,31 +17,15 @@ export default function EditableBlock({
   isEditor,
   placeholder = "",
 }: Props) {
+  const [html, setHtml] = useState<string>("");
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const editor = useEditor({
-    extensions: [StarterKit, Placeholder.configure({ placeholder })],
-    content: "",
-    editable: false, // start non-editable; toggled by effect below
-    immediatelyRender: false, // required to avoid SSR hydration mismatch
-  });
-
-  /* ---------------- Enable / disable edit mode ---------------- */
+  /* ---------------- Load from DB ---------------- */
   useEffect(() => {
-    if (!editor) return;
-    editor.setEditable(Boolean(isEditor));
-  }, [editor, isEditor]);
-
-  /* ---------------- Load from DB (backward-compatible) ----------------
-     This supports both older rows where value is a plain string and new
-     rows where value is an object containing { html: "<p>...</p>" }.
-  -------------------------------------------------------------------*/
-  useEffect(() => {
-    if (!editor) return;
-
     let cancelled = false;
+
     (async () => {
       try {
         const { data, error } = await supabase
@@ -50,171 +34,144 @@ export default function EditableBlock({
           .eq("key", contentKey)
           .maybeSingle();
 
-        if (error) {
-          console.error("EditableBlock load error:", error);
-          setLoadError(error.message || "Failed to load content");
-          setLoaded(true);
-          return;
-        }
+        if (error) throw error;
 
         const val = data?.value;
 
         if (!val) {
-          // no row — keep placeholder (TipTap Placeholder will show)
-          setLoaded(true);
-          return;
-        }
-
-        // If stored as string (legacy), render as plain paragraph
-        if (typeof val === "string") {
-          // Protect: convert newlines to <br> minimally; wrap in paragraph
-          const safe = val
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line) => `<p>${line}</p>`)
-            .join("");
-          editor.commands.setContent(safe || `<p>${val}</p>`);
+          setHtml(placeholder ? `<p>${placeholder}</p>` : "");
+        } else if (typeof val === "string") {
+          setHtml(`<p>${val}</p>`);
         } else if (val?.html) {
-          // new format: { html: "<p>...</p>" }
-          editor.commands.setContent(val.html);
+          setHtml(val.html);
         } else if (val?.text) {
-          // alternate form: { text: "..." }
-          editor.commands.setContent(`<p>${val.text}</p>`);
+          setHtml(`<p>${val.text}</p>`);
         } else {
-          // unknown shape: attempt stringification fallback
-          editor.commands.setContent(String(val));
+          setHtml(String(val));
         }
       } catch (err: any) {
-        console.error("EditableBlock unexpected load error:", err);
-        setLoadError(err?.message || String(err));
+        console.error("EditableBlock load error:", err);
+        setLoadError(err.message || String(err));
       } finally {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled) setLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [editor, contentKey]);
+  }, [contentKey, placeholder]);
 
-  /* ---------------- Save to DB ----------------
-     Save as object with `html` field so TipTap content persists as rich HTML.
-  --------------------------------------------*/
+  /* ---------------- TipTap editor (ALWAYS INITIALIZED) ---------------- */
+  const editor = useEditor(
+    {
+      extensions: [
+        StarterKit,
+        Placeholder.configure({ placeholder }),
+      ],
+      content: html,
+      editable: isEditor,
+      immediatelyRender: false,
+      onUpdate: ({ editor }) => {
+        if (isEditor) {
+          setHtml(editor.getHTML());
+        }
+      },
+    },
+    [isEditor]
+  );
+
+  /* ---------------- Save ---------------- */
   async function handleSave() {
     if (!editor) return;
+
     setSaving(true);
     try {
-      const html = editor.getHTML();
-
       const { error } = await supabase.from("site_content").upsert({
         key: contentKey,
         value: { html },
         updated_at: new Date().toISOString(),
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
     } catch (err: any) {
       console.error("EditableBlock save error:", err);
-      // optional: surface to UI in a more elaborate implementation
       alert("Save failed: " + (err.message || String(err)));
     } finally {
       setSaving(false);
     }
   }
 
-  if (!editor || !loaded) return null;
+  if (loading) return null;
 
+  /* ---------------- VIEW MODE ---------------- */
+  if (!isEditor) {
+    return (
+      <div
+        style={{ lineHeight: 1.6 }}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+
+  /* ---------------- EDIT MODE ---------------- */
   return (
-    <div style={{ position: "relative" }}>
-      {/* small inline toolbar for basic formatting when editable */}
-      {isEditor && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            aria-label="Bold"
-          >
-            B
-          </button>
+    <div>
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+        <button onClick={() => editor?.chain().focus().toggleBold().run()}>
+          B
+        </button>
+        <button onClick={() => editor?.chain().focus().toggleItalic().run()}>
+          I
+        </button>
+        <button
+          onClick={() =>
+            editor?.chain().focus().toggleHeading({ level: 2 }).run()
+          }
+        >
+          H2
+        </button>
+        <button onClick={() => editor?.chain().focus().toggleBulletList().run()}>
+          • List
+        </button>
+        <button onClick={() => editor?.chain().focus().undo().run()}>
+          ↶
+        </button>
+        <button onClick={() => editor?.chain().focus().redo().run()}>
+          ↷
+        </button>
+      </div>
 
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            aria-label="Italic"
-          >
-            I
-          </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            aria-label="Heading 2"
-          >
-            H2
-          </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            aria-label="Bullet list"
-          >
-            • List
-          </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().undo().run()}
-            aria-label="Undo"
-          >
-            ↶
-          </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().redo().run()}
-            aria-label="Redo"
-          >
-            ↷
-          </button>
-        </div>
-      )}
-
+      {/* Editor */}
       <div
         style={{
-          border: isEditor ? "1px dashed #6A3291" : "none",
-          padding: isEditor ? 8 : 0,
+          border: "1px dashed #6A3291",
+          padding: 8,
           borderRadius: 6,
-          minHeight: 32,
-          cursor: isEditor ? "text" : "default",
-          background: isEditor ? "#fffafc" : "transparent",
+          background: "#fffafc",
         }}
       >
         <EditorContent editor={editor} />
       </div>
 
-      {isEditor && (
-        <div style={{ marginTop: 8 }}>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              padding: "6px 10px",
-              fontSize: 13,
-              background: "#6A3291",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      )}
+      {/* Save */}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        style={{
+          marginTop: 8,
+          padding: "6px 10px",
+          fontSize: 13,
+          background: "#6A3291",
+          color: "white",
+          border: "none",
+          borderRadius: 6,
+          cursor: saving ? "not-allowed" : "pointer",
+        }}
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
 
       {loadError && (
         <div style={{ marginTop: 8, color: "crimson", fontSize: 13 }}>
