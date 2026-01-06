@@ -53,7 +53,7 @@ export default function EditableBlock({
        - text column containing JSON string (e.g. '{"html":"<p>...</p>"}')
        - plain text stored in text column
        - legacy { text: "..." } object
-       - broken legacy string containing `"html": "..."` (handled below)
+       - broken legacy string containing `"html":"..."` (this is handled)
   -------------------------------------------------------------------*/
   useEffect(() => {
     if (!editor) return;
@@ -102,53 +102,21 @@ export default function EditableBlock({
               // fall back to plain string
               parsed = val;
             }
-          }
-
-          // 2) Catch broken legacy strings containing "html": somewhere
-          else if (
-            trimmed.includes(`"html":`) ||
-            trimmed.includes(`'html':`) ||
-            trimmed.toLowerCase().includes("html\":")
-          ) {
-            // attempt to extract text after "html":
-            const matchDouble = trimmed.indexOf(`"html":`);
-            const matchSingle = trimmed.indexOf(`'html':`);
-            const idx = matchDouble >= 0 ? matchDouble : matchSingle >= 0 ? matchSingle : -1;
-
-            if (idx >= 0) {
-              // slice after the matched token
-              const token = matchDouble >= 0 ? `"html":` : `'html':`;
-              let extracted = trimmed.slice(idx + token.length).trim();
-
-              // remove leading colon/quotes/braces if present
-              extracted = extracted.replace(/^[:\s]*/, "");
-              // remove enclosing braces/trailing commas
-              // remove leading quote
-              if (extracted.startsWith('"') || extracted.startsWith("'")) {
-                // remove the first and last matching quote if present
-                extracted = extracted.replace(/^["']/, "");
-                // remove trailing quote then optional } or , or }
-                extracted = extracted.replace(/["']\s*[\},]?\s*$/, "");
-              } else {
-                // also strip trailing } or , if present
-                extracted = extracted.replace(/[\},]\s*$/, "");
-              }
-
-              // If extracted looks like HTML (contains <>), use as-is; otherwise convert to paragraphs
-              if (extracted.includes("<")) {
-                parsed = { html: extracted };
-              } else {
-                parsed = { html: plainTextToParagraphs(extracted) };
-              }
+          } else {
+            // 2) Attempt to extract "html":"..." fragment inside a broken string using regex
+            // This covers cases where DB row is a corrupted string containing '"html":"<p>...</p>"'
+            const htmlFieldRegex = /["']html["']\s*:\s*["']([\s\S]*?)["']/i;
+            const m = trimmed.match(htmlFieldRegex);
+            if (m && m[1]) {
+              // extracted possibly-escaped content, unescape common escape sequences
+              let extracted = m[1];
+              // unescape escaped quotes and common escapes
+              extracted = extracted.replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, " ");
+              parsed = { html: extracted };
             } else {
-              // fallback
+              // 3) Plain non-JSON string -> keep as plain
               parsed = val;
             }
-          }
-
-          // 3) Plain string -> keep as-is
-          else {
-            parsed = val;
           }
         }
 
