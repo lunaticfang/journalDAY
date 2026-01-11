@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -20,23 +20,23 @@ export default function EditableBlock({
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const editor = useEditor({
     extensions: [StarterKit, Placeholder.configure({ placeholder })],
     content: "",
-    editable: false, // start non-editable; toggled by effect below
-    immediatelyRender: false, // required to avoid SSR hydration mismatch
+    editable: false,
+    immediatelyRender: false,
   });
 
-  /* ---------------- Enable / disable edit mode ---------------- */
+  /* enable / disable edit mode */
   useEffect(() => {
     if (!editor) return;
     editor.setEditable(Boolean(isEditor));
   }, [editor, isEditor]);
 
-  /* ---------------- Helper: convert plain text -> safe simple HTML ---------------- */
+  /* helper: plain text → paragraphs */
   function plainTextToParagraphs(text: string) {
-    // preserve paragraphs, ignore empty lines
     return (
       text
         .split(/\r?\n/)
@@ -47,18 +47,12 @@ export default function EditableBlock({
     );
   }
 
-  /* ---------------- Load from DB (backward-compatible) ----------------
-     Accepts:
-       - jsonb column returning object (e.g. { html: "<p>..." } )
-       - text column containing JSON string (e.g. '{"html":"<p>...</p>"}')
-       - plain text stored in text column
-       - legacy { text: "..." } object
-       - broken legacy string containing `"html":"..."` (this is handled)
-  -------------------------------------------------------------------*/
+  /* load from DB */
   useEffect(() => {
     if (!editor) return;
 
     let cancelled = false;
+
     (async () => {
       try {
         const { data, error } = await supabase
@@ -77,72 +71,49 @@ export default function EditableBlock({
         const val = data?.value;
 
         if (!val) {
-          // no row — leave placeholder
           setLoaded(true);
           return;
         }
 
-        // We'll compute 'parsed' such that:
-        // - if DB gave string that *is* JSON -> parsed is object
-        // - if DB gave a string that's not JSON -> parsed remains the string
-        // - if DB already gave object -> parsed is that object
         let parsed: any = val;
 
         if (typeof val === "string") {
           const trimmed = val.trim();
 
-          // 1) Looks like JSON object/array -> try parse
           if (
             (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
             (trimmed.startsWith("[") && trimmed.endsWith("]"))
           ) {
             try {
               parsed = JSON.parse(val);
-            } catch (e) {
-              // fall back to plain string
+            } catch {
               parsed = val;
             }
+          } else if (trimmed.includes('html":"')) {
+            const idx = trimmed.indexOf('html":"') + 7;
+            const extracted = trimmed.slice(idx).replace(/"+$/, "");
+            parsed = { html: extracted };
           } else {
-            // 2) Attempt to extract "html":"..." fragment inside a broken string using regex
-            // This covers cases where DB row is a corrupted string containing '"html":"<p>...</p>"'
-            const htmlFieldRegex = /["']html["']\s*:\s*["']([\s\S]*?)["']/i;
-            const m = trimmed.match(htmlFieldRegex);
-            if (m && m[1]) {
-              // extracted possibly-escaped content, unescape common escape sequences
-              let extracted = m[1];
-              // unescape escaped quotes and common escapes
-              extracted = extracted.replace(/\\"/g, '"').replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, " ");
-              parsed = { html: extracted };
-            } else {
-              // 3) Plain non-JSON string -> keep as plain
-              parsed = val;
-            }
+            parsed = val;
           }
         }
 
-        // Now set the editor content using the shapes we accept
         try {
           if (typeof parsed === "string") {
-            // plain text: convert to simple paragraphs
-            const safe = plainTextToParagraphs(parsed);
-            editor.commands.setContent(safe);
+            editor.commands.setContent(plainTextToParagraphs(parsed));
           } else if (parsed && typeof parsed === "object") {
             if (parsed.html) {
-              // preferred: object with html field
               editor.commands.setContent(parsed.html);
             } else if (parsed.text) {
               editor.commands.setContent(`<p>${parsed.text}</p>`);
             } else {
-              // object of unknown shape — stringify reasonably
               editor.commands.setContent(String(parsed));
             }
           } else {
-            // last-resort fallback
             editor.commands.setContent(String(parsed));
           }
         } catch (e) {
-          // TipTap setContent can throw on malformed HTML — surface and fallback
-          console.error("EditableBlock: failed to set editor content:", e);
+          console.error("EditableBlock setContent error:", e);
           setLoadError("Failed to render content");
         }
       } catch (err: any) {
@@ -158,12 +129,11 @@ export default function EditableBlock({
     };
   }, [editor, contentKey]);
 
-  /* ---------------- Save to DB ----------------
-     We continue to upsert { html } — the load path above will parse stringified JSON when necessary.
-  --------------------------------------------*/
+  /* save */
   async function handleSave() {
     if (!editor) return;
     setSaving(true);
+
     try {
       const html = editor.getHTML();
 
@@ -173,9 +143,7 @@ export default function EditableBlock({
         updated_at: new Date().toISOString(),
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
     } catch (err: any) {
       console.error("EditableBlock save error:", err);
       alert("Save failed: " + (err.message || String(err)));
@@ -184,60 +152,71 @@ export default function EditableBlock({
     }
   }
 
+  /* upload image / pdf */
+  async function handleFileUpload(file: File) {
+    if (!editor) return;
+
+    const ext = file.name.split(".").pop();
+    const fileName = `${contentKey}/${Date.now()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from("public-files")
+      .upload(fileName, file, { upsert: true });
+
+    if (error) {
+      alert("Upload failed: " + error.message);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("public-files")
+      .getPublicUrl(fileName);
+
+    const url = data.publicUrl;
+
+    if (file.type.startsWith("image/")) {
+      editor.chain().focus().insertContent(`<img src="${url}" style="max-width:100%;" />`).run();
+    } else {
+      editor
+        .chain()
+        .focus()
+        .insertContent(`<p><a href="${url}" target="_blank">Download file</a></p>`)
+        .run();
+    }
+  }
+
   if (!editor || !loaded) return null;
 
   return (
     <div style={{ position: "relative" }}>
-      {/* small inline toolbar for basic formatting when editable */}
       {isEditor && (
         <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            aria-label="Bold"
-          >
-            B
-          </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            aria-label="Italic"
-          >
-            I
-          </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            aria-label="Heading 2"
-          >
+          <button onClick={() => editor.chain().focus().toggleBold().run()}>B</button>
+          <button onClick={() => editor.chain().focus().toggleItalic().run()}>I</button>
+          <button onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
             H2
           </button>
-
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            aria-label="Bullet list"
-          >
+          <button onClick={() => editor.chain().focus().toggleBulletList().run()}>
             • List
           </button>
+          <button onClick={() => editor.chain().focus().undo().run()}>↶</button>
+          <button onClick={() => editor.chain().focus().redo().run()}>↷</button>
 
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().undo().run()}
-            aria-label="Undo"
-          >
-            ↶
+          <button onClick={() => fileInputRef.current?.click()}>
+            + Image / PDF
           </button>
 
-          <button
-            type="button"
-            onClick={() => editor.chain().focus().redo().run()}
-            aria-label="Redo"
-          >
-            ↷
-          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileUpload(file);
+              e.currentTarget.value = "";
+            }}
+          />
         </div>
       )}
 
@@ -257,7 +236,6 @@ export default function EditableBlock({
       {isEditor && (
         <div style={{ marginTop: 8 }}>
           <button
-            type="button"
             onClick={handleSave}
             disabled={saving}
             style={{

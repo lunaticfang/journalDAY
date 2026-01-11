@@ -1,6 +1,7 @@
-// app/page.tsx
+/*// app/page.tsx
 "use client";
 
+import FileAttachment from "./components/FileAttachment";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
@@ -31,9 +32,9 @@ export default function HomePage() {
 
   const [isOwner, setIsOwner] = useState(false);
 
-  /* -------------------------------------------------- */
-  /* Auth + ownership check (FIXED)                      */
-  /* -------------------------------------------------- */
+  // -------------------------------------------------- 
+  // Auth + ownership check (FIXED)                     
+  // -------------------------------------------------- 
   useEffect(() => {
     let mounted = true;
 
@@ -57,9 +58,9 @@ export default function HomePage() {
     };
   }, []);
 
-  /* -------------------------------------------------- */
-  /* Load homepage data                                  */
-  /* -------------------------------------------------- */
+  // -------------------------------------------------- 
+  // Load homepage data                                 
+  // -------------------------------------------------- 
   useEffect(() => {
     let cancelled = false;
 
@@ -98,7 +99,7 @@ export default function HomePage() {
 
   return (
     <div style={{ background: "#ffffff", color: "#111827" }}>
-      {/* Editor-in-Chief */}
+      {// Editor-in-Chief /}
       <section
         style={{
           background: "#f9f5ff",
@@ -116,7 +117,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Hero section */}
+      {// Hero section }
       <section
         style={{
           maxWidth: 1120,
@@ -158,21 +159,37 @@ export default function HomePage() {
               placeholder="UpDAYtes brings together peer-reviewed research and clinical perspectives."
             />
 
-            <div style={{ marginTop: 18 }}>
-              <Link
-                href="/author/submit"
-                style={{
-                  background: BRAND_PURPLE,
-                  color: "white",
-                  padding: "10px 16px",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  textDecoration: "none",
-                }}
-              >
-                Submit an Article
-              </Link>
-            </div>
+           <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
+  <Link
+    href="/author/submit"
+    style={{
+      background: BRAND_PURPLE,
+      color: "white",
+      padding: "10px 16px",
+      borderRadius: 6,
+      fontSize: 14,
+      textDecoration: "none",
+    }}
+  >
+    Submit an Article
+  </Link>
+
+  <Link
+    href="/about"
+    style={{
+      padding: "10px 16px",
+      borderRadius: 6,
+      fontSize: 14,
+      border: "1px solid #e5e7eb",
+      textDecoration: "none",
+      color: "#111827",
+      background: "white",
+    }}
+  >
+    About the Journal
+  </Link>
+</div>
+
           </div>
 
           <div
@@ -191,7 +208,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Current Issue */}
+      {// Current Issue }
       <section style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
         <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
           Current Issue
@@ -255,19 +272,20 @@ export default function HomePage() {
     </div>
   );
 }
+*/
 
-
-
-/*
 
 // app/page.tsx
 "use client";
 
+import FileAttachment from "./components/FileAttachment";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
+import EditableBlock from "./components/EditableBlock";
 
 const BRAND_PURPLE = "#6A3291";
+const OWNER_EMAIL = "updaytesjournal@gmail.com";
 
 type Issue = {
   id: string;
@@ -276,6 +294,7 @@ type Issue = {
   issue_number: number | null;
   published_at: string | null;
   cover_url: string | null;
+  pdf_path?: string | null;
 };
 
 type Article = {
@@ -284,55 +303,70 @@ type Article = {
   authors: string | null;
 };
 
-type BannerContent = {
-  title?: string;
-  subtitle?: string;
-  cta?: string;
-};
-
 export default function HomePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [banner, setBanner] = useState<BannerContent>({
-    title:
-      "Advancing knowledge, awareness, understanding of the complex biological, environmental, behavioral, and social determinants of metabolic health including obesity and diabetes.",
-    subtitle:
-      "UpDAYtes brings together peer-reviewed research, clinical perspectives, and educational insights to empower healthcare professionals and the community.",
-    cta: "Submit an Article",
-  });
+  const [isOwner, setIsOwner] = useState(false);
 
+  // derived cover source (either image URL or PDF public URL)
+  const [coverSrc, setCoverSrc] = useState<string | null>(null);
+  const [coverIsPdf, setCoverIsPdf] = useState(false);
+
+  /* -------------------------------------------------- */
+  /* Auth + ownership check                              */
+  /* -------------------------------------------------- */
+  useEffect(() => {
+    let mounted = true;
+
+    // initial check
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return;
+      setIsOwner(data?.user?.email === OWNER_EMAIL);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setIsOwner(session?.user?.email === OWNER_EMAIL);
+    });
+
+    return () => {
+      mounted = false;
+      try {
+        subscription.unsubscribe();
+      } catch (e) {
+        // ignore if already unsubscribed
+      }
+    };
+  }, []);
+
+  /* -------------------------------------------------- */
+  /* Load homepage data                                  */
+  /* -------------------------------------------------- */
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        // ---------------- Banner content ---------------- 
-        const { data: bannerRow } = await supabase
-          .from("site_content")
-          .select("value")
-          .eq("key", "homepage_banner")
-          .maybeSingle();
-
-        if (!cancelled && bannerRow?.value) {
-          setBanner((prev) => ({ ...prev, ...bannerRow.value }));
-        }
-
-        // ---------------- Latest issue ----------------
+        /* ---------------- Latest issue ---------------- */
         const { data: issues } = await supabase
           .from("issues")
-          .select("id, title, volume, issue_number, published_at, cover_url")
+          .select(
+            "id, title, volume, issue_number, published_at, cover_url, pdf_path"
+          )
           .order("published_at", { ascending: false })
           .limit(1);
 
         if (!issues || issues.length === 0) return;
-        const latest = issues[0];
+        const latest = issues[0] as Issue;
         if (cancelled) return;
 
         setIssue(latest);
 
-        // ---------------- Articles ---------------- 
+        /* ---------------- Articles ---------------- */
         const { data: articleRows } = await supabase
           .from("articles")
           .select("id, title, authors")
@@ -341,6 +375,69 @@ export default function HomePage() {
 
         if (!cancelled) {
           setArticles(articleRows || []);
+        }
+
+        /* ---------------- Cover resolution ----------------
+           Priority:
+             1) issue.cover_url (explicit image URL)
+             2) issue.pdf_path -> public URL from storage (embed PDF)
+             3) fallback static /journal cover.jpg
+        --------------------------------------------------*/
+        if (latest.cover_url) {
+          setCoverSrc(latest.cover_url);
+          setCoverIsPdf(false);
+        } else if (latest.pdf_path) {
+          // try to get a public URL from Supabase storage (bucket: site-files)
+          try {
+            const getPublic = await (supabase.storage
+              .from("site-files")
+              .getPublicUrl
+              ? // v1 / v2 compatibility: call and check returned shapes
+                (supabase.storage.from("site-files").getPublicUrl(
+                  latest.pdf_path as string
+                ) as any)
+              : null);
+
+            // attempt to extract public URL from possible shapes
+            let publicUrl: string | null = null;
+            if (getPublic) {
+              // v2 shape: { data: { publicUrl } }
+              if (getPublic.data && getPublic.data.publicUrl) {
+                publicUrl = getPublic.data.publicUrl;
+              }
+              // v1 shape: { publicURL }
+              if (!publicUrl && (getPublic as any).publicURL) {
+                publicUrl = (getPublic as any).publicURL;
+              }
+              // some clients may return { data: { publicUrl } } or { publicURL }
+            }
+
+            // Fallback: if storage call didn't produce url, attempt to build URL via supabase client (best-effort)
+            if (!publicUrl) {
+              // If your Supabase project exposes a public bucket, this fallback may work:
+              // https://<project>.supabase.co/storage/v1/object/public/site-files/<path>
+              // but we avoid constructing this blindly; default to using pdf_path (raw) as link.
+              publicUrl = latest.pdf_path as string;
+            }
+
+            if (publicUrl) {
+              // adding '#page=1' in some browsers will open the PDF at page 1;
+              // embedding will still show the PDF; treat as PDF cover.
+              setCoverSrc(publicUrl + "#page=1");
+              setCoverIsPdf(true);
+            } else {
+              setCoverSrc(null);
+              setCoverIsPdf(false);
+            }
+          } catch (err) {
+            // if anything fails, fallback to static cover
+            console.error("Could not resolve pdf public URL:", err);
+            setCoverSrc(null);
+            setCoverIsPdf(false);
+          }
+        } else {
+          setCoverSrc(null);
+          setCoverIsPdf(false);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -354,64 +451,37 @@ export default function HomePage() {
 
   return (
     <div style={{ background: "#ffffff", color: "#111827" }}>
-      {// Editor-in-Chief marquee /}
+      {/* Editor-in-Chief */}
       <section
         style={{
           background: "#f9f5ff",
           borderTop: "1px solid #e5e7eb",
           borderBottom: "1px solid #e5e7eb",
           padding: "10px 0",
-          overflow: "hidden",
         }}
       >
         <div style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
-          <div
-            style={{
-              animation: "marquee 15s linear infinite",
-              whiteSpace: "nowrap",
-              display: "inline-block",
-              paddingLeft: "100%",
-            }}
-          >
-            <p
-              style={{
-                margin: 10,
-                fontWeight: 1200,
-                fontSize: 24,
-                color: "BLACK",
-                display: "inline-block",
-              }}
-            >
-              Editor-in-Chief: Prof. (Dr.) Satinath Mukhopadhyay
-            </p>
-          </div>
+          <EditableBlock
+            contentKey="home.editor_in_chief"
+            isEditor={isOwner}
+            placeholder="Editor-in-Chief: Prof. (Dr.) Satinath Mukhopadhyay"
+          />
         </div>
       </section>
 
-      <style jsx>{`
-        @keyframes marquee {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-100%);
-          }
-        }
-      `}</style>
-
-      {// Hero section /}
+      {/* Hero section - adjusted proportions */}
       <section
         style={{
           maxWidth: 1120,
-          margin: "16px auto 32px auto",
+          margin: "20px auto 32px auto",
           padding: "0 20px",
         }}
       >
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "2fr 1.5fr",
-            gap: 32,
+            gridTemplateColumns: "1.8fr 1.2fr",
+            gap: 28,
             alignItems: "center",
           }}
         >
@@ -429,23 +499,21 @@ export default function HomePage() {
               Featured
             </div>
 
-            <h1
-              style={{
-                fontSize: 25,
-                fontWeight: 500,
-                lineHeight: 1.0,
-                marginBottom: 14,
-              }}
-            >
-              {banner.title}
-            </h1>
+            <div style={{ maxWidth: 720 }}>
+              <EditableBlock
+                contentKey="home.hero_title"
+                isEditor={isOwner}
+                placeholder="Advancing knowledge, awareness, understanding of the complex biological, environmental, behavioral, and social determinants of metabolic health including obesity and diabetes."
+              />
 
-            <p style={{ color: "#4b5563", fontSize: 15 }}>
-              <span style={{ color: BRAND_PURPLE, fontWeight: 700 }}>
-                UpDAYtes
-              </span>{" "}
-              {banner.subtitle}
-            </p>
+              <div style={{ marginTop: 12 }}>
+                <EditableBlock
+                  contentKey="home.hero_subtitle"
+                  isEditor={isOwner}
+                  placeholder="UpDAYtes brings together peer-reviewed research, clinical perspectives, and educational insights to empower healthcare professionals and the community."
+                />
+              </div>
+            </div>
 
             <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
               <Link
@@ -459,7 +527,7 @@ export default function HomePage() {
                   textDecoration: "none",
                 }}
               >
-                {banner.cta}
+                Submit an Article
               </Link>
 
               <Link
@@ -471,23 +539,10 @@ export default function HomePage() {
                   border: "1px solid #e5e7eb",
                   textDecoration: "none",
                   color: "#111827",
+                  background: "white",
                 }}
               >
                 About the Journal
-              </Link>
-
-              <Link
-                href="/aim"
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  border: "1px solid #e5e7eb",
-                  textDecoration: "none",
-                  color: "#111827",
-                }}
-              >
-                Aim & Scope
               </Link>
             </div>
           </div>
@@ -497,19 +552,62 @@ export default function HomePage() {
               border: "1px solid #e5e7eb",
               borderRadius: 8,
               overflow: "hidden",
+              minHeight: 220,
+              display: "flex",
+              flexDirection: "column",
             }}
           >
-            <img
-              src="/Website Banner.jpg"
-              alt="UpDAYtes banner"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
+            {/* Prefer uploaded cover image / pdf */}
+            {coverSrc ? (
+              coverIsPdf ? (
+                // embed PDF (will show first page in many browsers)
+                <object
+                  data={coverSrc}
+                  type="application/pdf"
+                  aria-label="Issue PDF cover"
+                  style={{ width: "100%", height: 260, display: "block" }}
+                >
+                  {/* fallback link if object not supported */}
+                  <a href={coverSrc} target="_blank" rel="noreferrer">
+                    View issue PDF
+                  </a>
+                </object>
+              ) : (
+                <img
+                  src={coverSrc}
+                  alt="UpDAYtes banner"
+                  style={{ width: "100%", height: 260, objectFit: "cover" }}
+                />
+              )
+            ) : (
+              // fallback static banner image
+              <img
+                src="/Website Banner.jpg"
+                alt="UpDAYtes banner"
+                style={{ width: "100%", height: 260, objectFit: "cover" }}
+              />
+            )}
+
+            {/* Owner: file attachment control for hero area (optional) */}
+            <div style={{ padding: 12 }}>
+              <FileAttachment
+                contentKey="home.hero.attachment"
+                isEditor={isOwner}
+                // FileAttachment should handle upload/display; no further wiring here
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      {// Current Issue }
-      <section style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
+      {/* Current Issue: cover + articles; cover will be first page of PDF if no cover image */}
+      <section
+        style={{
+          maxWidth: 1120,
+          margin: "0 auto",
+          padding: "0 20px",
+        }}
+      >
         <div
           style={{
             display: "flex",
@@ -540,22 +638,82 @@ export default function HomePage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "220px 1fr",
+              gridTemplateColumns: "280px 1fr",
               gap: 28,
+              alignItems: "start",
             }}
           >
+            {/* Left: cover (image or embedded PDF first page) */}
             <div>
-              <img
-                src="/journal cover.jpg"
-                alt="Issue cover"
-                style={{
-                  width: "100%",
-                  borderRadius: 6,
-                  border: "1px solid #e5e7eb",
-                }}
-              />
+              {issue.cover_url ? (
+                <img
+                  src={issue.cover_url}
+                  alt="Issue cover"
+                  style={{
+                    width: "100%",
+                    borderRadius: 6,
+                    border: "1px solid #e5e7eb",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : issue.pdf_path ? (
+                // try to show embedded pdf (use coverSrc if computed earlier)
+                coverSrc ? (
+                  coverIsPdf ? (
+                    <object
+                      data={coverSrc}
+                      type="application/pdf"
+                      style={{ width: "100%", height: 360, display: "block" }}
+                    >
+                      <a href={coverSrc} target="_blank" rel="noreferrer">
+                        View issue PDF
+                      </a>
+                    </object>
+                  ) : (
+                    <img
+                      src={coverSrc}
+                      alt="Issue cover (derived)"
+                      style={{
+                        width: "100%",
+                        borderRadius: 6,
+                        border: "1px solid #e5e7eb",
+                        objectFit: "cover",
+                      }}
+                    />
+                  )
+                ) : (
+                  // final fallback if we couldn't compute public URL
+                  <div
+                    style={{
+                      width: "100%",
+                      height: 360,
+                      borderRadius: 6,
+                      border: "1px solid #e5e7eb",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#6b7280",
+                      background: "#fafafa",
+                    }}
+                  >
+                    Issue PDF available — <Link href={`/issues/${issue.id}`}>open issue</Link>
+                  </div>
+                )
+              ) : (
+                <img
+                  src="/journal cover.jpg"
+                  alt="Issue cover"
+                  style={{
+                    width: "100%",
+                    borderRadius: 6,
+                    border: "1px solid #e5e7eb",
+                    objectFit: "cover",
+                  }}
+                />
+              )}
             </div>
 
+            {/* Right: articles grid (side-by-side with cover) */}
             <div
               style={{
                 display: "grid",
@@ -563,6 +721,12 @@ export default function HomePage() {
                 gap: 14,
               }}
             >
+              {articles.length === 0 && (
+                <div style={{ gridColumn: "1 / -1", color: "#6b7280" }}>
+                  No articles published yet.
+                </div>
+              )}
+
               {articles.map((a) => (
                 <Link
                   key={a.id}
@@ -573,25 +737,28 @@ export default function HomePage() {
                     borderRadius: 6,
                     padding: 12,
                     background: "white",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
                   }}
                 >
-                  <h3
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: "#111827",
-                      marginBottom: 6,
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {a.title || "Untitled article"}
-                  </h3>
+                  <div>
+                    <h3
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 6,
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {a.title || "Untitled article"}
+                    </h3>
 
-                  {a.authors && (
-                    <p style={{ fontSize: 12, color: "#6b7280" }}>
-                      {a.authors}
-                    </p>
-                  )}
+                    {a.authors && (
+                      <p style={{ fontSize: 12, color: "#6b7280" }}>{a.authors}</p>
+                    )}
+                  </div>
                 </Link>
               ))}
             </div>
@@ -603,4 +770,3 @@ export default function HomePage() {
     </div>
   );
 }
-*/
