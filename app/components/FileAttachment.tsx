@@ -17,10 +17,9 @@ type SiteFileRow = {
   mime: string | null;
   public_url: string | null;
   uploader_id: string | null;
-  uploaded_at: string | null;
 };
 
-const DEFAULT_BUCKET = "instructions-pdfs"; // change if needed
+const DEFAULT_BUCKET = "instructions-pdfs"; // must match your Supabase bucket
 
 export default function FileAttachment({ contentKey, isEditor }: Props) {
   const [row, setRow] = useState<SiteFileRow | null>(null);
@@ -43,7 +42,7 @@ export default function FileAttachment({ contentKey, isEditor }: Props) {
           .from("site_files")
           .select("*")
           .eq("content_key", contentKey)
-          .order("uploaded_at", { ascending: false })
+          .order("id", { ascending: false }) // ✅ instead of uploaded_at
           .limit(1)
           .maybeSingle();
 
@@ -54,8 +53,11 @@ export default function FileAttachment({ contentKey, isEditor }: Props) {
           const r = data as SiteFileRow;
           setRow(r);
           setFileUrl(r.public_url);
+
           const mt = (r.mime || "").toLowerCase();
-          setFileType(mt.startsWith("image/") ? "image" : mt === "application/pdf" ? "pdf" : null);
+          if (mt.startsWith("image/")) setFileType("image");
+          else if (mt === "application/pdf") setFileType("pdf");
+          else setFileType(null);
         } else {
           setRow(null);
           setFileUrl(null);
@@ -115,17 +117,16 @@ export default function FileAttachment({ contentKey, isEditor }: Props) {
         mime: file.type || null,
         public_url: publicUrl,
         uploader_id: uploaderId,
-        uploaded_at: new Date().toISOString(),
       });
 
       if (insertErr) throw insertErr;
 
-      // Reload latest file
+      // reload latest
       const { data: newRow } = await supabase
         .from("site_files")
         .select("*")
         .eq("content_key", contentKey)
-        .order("uploaded_at", { ascending: false })
+        .order("id", { ascending: false })
         .limit(1)
         .maybeSingle();
 
@@ -133,8 +134,11 @@ export default function FileAttachment({ contentKey, isEditor }: Props) {
         const r = newRow as SiteFileRow;
         setRow(r);
         setFileUrl(r.public_url);
+
         const mt = (r.mime || "").toLowerCase();
-        setFileType(mt.startsWith("image/") ? "image" : mt === "application/pdf" ? "pdf" : null);
+        if (mt.startsWith("image/")) setFileType("image");
+        else if (mt === "application/pdf") setFileType("pdf");
+        else setFileType(null);
       }
     } catch (err: any) {
       console.error("Upload failed:", err);
