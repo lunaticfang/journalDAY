@@ -1,4 +1,4 @@
-/*// app/page.tsx
+// app/page.tsx
 "use client";
 
 import FileAttachment from "./components/FileAttachment";
@@ -17,6 +17,7 @@ type Issue = {
   issue_number: number | null;
   published_at: string | null;
   cover_url: string | null;
+  pdf_path?: string | null;
 };
 
 type Article = {
@@ -32,19 +33,18 @@ export default function HomePage() {
 
   const [isOwner, setIsOwner] = useState(false);
 
-  // -------------------------------------------------- 
-  // Auth + ownership check (FIXED)                     
-  // -------------------------------------------------- 
+  const [coverSrc, setCoverSrc] = useState<string | null>(null);
+  const [coverIsPdf, setCoverIsPdf] = useState(false);
+
+  /* ---------------- Auth + ownership ---------------- */
   useEffect(() => {
     let mounted = true;
 
-    // Initial check
     supabase.auth.getUser().then(({ data }) => {
       if (!mounted) return;
       setIsOwner(data?.user?.email === OWNER_EMAIL);
     });
 
-    // React to auth changes (CRITICAL)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -58,9 +58,7 @@ export default function HomePage() {
     };
   }, []);
 
-  // -------------------------------------------------- 
-  // Load homepage data                                 
-  // -------------------------------------------------- 
+  /* ---------------- Load homepage data ---------------- */
   useEffect(() => {
     let cancelled = false;
 
@@ -68,14 +66,16 @@ export default function HomePage() {
       try {
         const { data: issues } = await supabase
           .from("issues")
-          .select("id, title, volume, issue_number, published_at, cover_url")
+          .select(
+            "id, title, volume, issue_number, published_at, cover_url, pdf_path"
+          )
           .order("published_at", { ascending: false })
           .limit(1);
 
         if (!issues || issues.length === 0) return;
+        const latest = issues[0] as Issue;
         if (cancelled) return;
 
-        const latest = issues[0];
         setIssue(latest);
 
         const { data: articleRows } = await supabase
@@ -86,6 +86,33 @@ export default function HomePage() {
 
         if (!cancelled) {
           setArticles(articleRows || []);
+        }
+
+        /* -------- COVER RESOLUTION (FIXED BUCKET) -------- */
+        if (latest.cover_url) {
+          setCoverSrc(latest.cover_url);
+          setCoverIsPdf(false);
+        } else if (latest.pdf_path) {
+          try {
+            const { data: publicData } = supabase.storage
+              .from("instructions-pdfs") // ✅ FIXED BUCKET
+              .getPublicUrl(latest.pdf_path as string);
+
+            if (publicData?.publicUrl) {
+              setCoverSrc(publicData.publicUrl + "#page=1");
+              setCoverIsPdf(true);
+            } else {
+              setCoverSrc(null);
+              setCoverIsPdf(false);
+            }
+          } catch (err) {
+            console.error("Could not resolve pdf public URL:", err);
+            setCoverSrc(null);
+            setCoverIsPdf(false);
+          }
+        } else {
+          setCoverSrc(null);
+          setCoverIsPdf(false);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -99,7 +126,7 @@ export default function HomePage() {
 
   return (
     <div style={{ background: "#ffffff", color: "#111827" }}>
-      {// Editor-in-Chief /}
+      {/* Editor-in-Chief */}
       <section
         style={{
           background: "#f9f5ff",
@@ -117,19 +144,19 @@ export default function HomePage() {
         </div>
       </section>
 
-      {// Hero section }
+      {/* Hero section */}
       <section
         style={{
           maxWidth: 1120,
-          margin: "16px auto 32px auto",
+          margin: "20px auto 32px auto",
           padding: "0 20px",
         }}
       >
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "2fr 1.5fr",
-            gap: 32,
+            gridTemplateColumns: "1.8fr 1.2fr",
+            gap: 28,
             alignItems: "center",
           }}
         >
@@ -150,46 +177,47 @@ export default function HomePage() {
             <EditableBlock
               contentKey="home.hero_title"
               isEditor={isOwner}
-              placeholder="Advancing knowledge, awareness, understanding of metabolic health..."
+              placeholder="Advancing knowledge, awareness..."
             />
 
-            <EditableBlock
-              contentKey="home.hero_subtitle"
-              isEditor={isOwner}
-              placeholder="UpDAYtes brings together peer-reviewed research and clinical perspectives."
-            />
+            <div style={{ marginTop: 12 }}>
+              <EditableBlock
+                contentKey="home.hero_subtitle"
+                isEditor={isOwner}
+                placeholder="UpDAYtes brings together peer-reviewed research..."
+              />
+            </div>
 
-           <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
-  <Link
-    href="/author/submit"
-    style={{
-      background: BRAND_PURPLE,
-      color: "white",
-      padding: "10px 16px",
-      borderRadius: 6,
-      fontSize: 14,
-      textDecoration: "none",
-    }}
-  >
-    Submit an Article
-  </Link>
+            <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
+              <Link
+                href="/author/submit"
+                style={{
+                  background: BRAND_PURPLE,
+                  color: "white",
+                  padding: "10px 16px",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  textDecoration: "none",
+                }}
+              >
+                Submit an Article
+              </Link>
 
-  <Link
-    href="/about"
-    style={{
-      padding: "10px 16px",
-      borderRadius: 6,
-      fontSize: 14,
-      border: "1px solid #e5e7eb",
-      textDecoration: "none",
-      color: "#111827",
-      background: "white",
-    }}
-  >
-    About the Journal
-  </Link>
-</div>
-
+              <Link
+                href="/about"
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 6,
+                  fontSize: 14,
+                  border: "1px solid #e5e7eb",
+                  textDecoration: "none",
+                  color: "#111827",
+                  background: "white",
+                }}
+              >
+                About the Journal
+              </Link>
+            </div>
           </div>
 
           <div
@@ -197,42 +225,60 @@ export default function HomePage() {
               border: "1px solid #e5e7eb",
               borderRadius: 8,
               overflow: "hidden",
+              minHeight: 220,
             }}
           >
-            <img
-              src="/Website Banner.jpg"
-              alt="UpDAYtes banner"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
+            {coverSrc ? (
+              coverIsPdf ? (
+                <object
+                  data={coverSrc}
+                  type="application/pdf"
+                  style={{ width: "100%", height: 260 }}
+                >
+                  <a href={coverSrc} target="_blank" rel="noreferrer">
+                    View issue PDF
+                  </a>
+                </object>
+              ) : (
+                <img
+                  src={coverSrc}
+                  alt="Cover"
+                  style={{ width: "100%", height: 260, objectFit: "cover" }}
+                />
+              )
+            ) : (
+              <img
+                src="/Website Banner.jpg"
+                alt="Banner"
+                style={{ width: "100%", height: 260, objectFit: "cover" }}
+              />
+            )}
           </div>
         </div>
       </section>
 
-      {// Current Issue }
+      {/* Current Issue */}
       <section style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
         <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
           Current Issue
         </h2>
 
-        {loading && <p>Loading…</p>}
-
         {!loading && issue && (
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "220px 1fr",
+              gridTemplateColumns: "280px 1fr",
               gap: 28,
             }}
           >
-            <img
-              src="/journal cover.jpg"
-              alt="Issue cover"
-              style={{
-                width: "100%",
-                borderRadius: 6,
-                border: "1px solid #e5e7eb",
-              }}
-            />
+            <div>
+              {coverSrc && !coverIsPdf && (
+                <img
+                  src={coverSrc}
+                  style={{ width: "100%", borderRadius: 6 }}
+                />
+              )}
+            </div>
 
             <div
               style={{
@@ -246,16 +292,14 @@ export default function HomePage() {
                   key={a.id}
                   href={`/article/${a.id}`}
                   style={{
-                    textDecoration: "none",
                     border: "1px solid #e5e7eb",
                     borderRadius: 6,
                     padding: 12,
+                    textDecoration: "none",
                     background: "white",
                   }}
                 >
-                  <h3 style={{ fontSize: 14, fontWeight: 700 }}>
-                    {a.title || "Untitled article"}
-                  </h3>
+                  <h3 style={{ fontSize: 14, fontWeight: 700 }}>{a.title}</h3>
                   {a.authors && (
                     <p style={{ fontSize: 12, color: "#6b7280" }}>
                       {a.authors}
@@ -272,8 +316,7 @@ export default function HomePage() {
     </div>
   );
 }
-*/
-
+/*
 
 // app/page.tsx
 "use client";
@@ -314,9 +357,9 @@ export default function HomePage() {
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverIsPdf, setCoverIsPdf] = useState(false);
 
-  /* -------------------------------------------------- */
-  /* Auth + ownership check                              */
-  /* -------------------------------------------------- */
+  // -------------------------------------------------- 
+  // Auth + ownership check                             
+  // -------------------------------------------------- 
   useEffect(() => {
     let mounted = true;
 
@@ -343,15 +386,15 @@ export default function HomePage() {
     };
   }, []);
 
-  /* -------------------------------------------------- */
-  /* Load homepage data                                  */
-  /* -------------------------------------------------- */
+  // -------------------------------------------------- 
+  // Load homepage data                                 
+  // -------------------------------------------------- 
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        /* ---------------- Latest issue ---------------- */
+        // ---------------- Latest issue ---------------- 
         const { data: issues } = await supabase
           .from("issues")
           .select(
@@ -366,7 +409,7 @@ export default function HomePage() {
 
         setIssue(latest);
 
-        /* ---------------- Articles ---------------- */
+        // ---------------- Articles ---------------- 
         const { data: articleRows } = await supabase
           .from("articles")
           .select("id, title, authors")
@@ -377,12 +420,12 @@ export default function HomePage() {
           setArticles(articleRows || []);
         }
 
-        /* ---------------- Cover resolution ----------------
+        // ---------------- Cover resolution ----------------
            Priority:
-             1) issue.cover_url (explicit image URL)
-             2) issue.pdf_path -> public URL from storage (embed PDF)
-             3) fallback static /journal cover.jpg
-        --------------------------------------------------*/
+         //  1) issue.cover_url (explicit image URL)
+         //  2) issue.pdf_path -> public URL from storage (embed PDF)
+         //  3) fallback static /journal cover.jpg
+        //--------------------------------------------------
         if (latest.cover_url) {
           setCoverSrc(latest.cover_url);
           setCoverIsPdf(false);
@@ -451,7 +494,7 @@ export default function HomePage() {
 
   return (
     <div style={{ background: "#ffffff", color: "#111827" }}>
-      {/* Editor-in-Chief */}
+      {// Editor-in-Chief }
       <section
         style={{
           background: "#f9f5ff",
@@ -469,7 +512,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Hero section - adjusted proportions */}
+      {// Hero section - adjusted proportions }
       <section
         style={{
           maxWidth: 1120,
@@ -557,7 +600,7 @@ export default function HomePage() {
               flexDirection: "column",
             }}
           >
-            {/* Prefer uploaded cover image / pdf */}
+            {// Prefer uploaded cover image / pdf }
             {coverSrc ? (
               coverIsPdf ? (
                 // embed PDF (will show first page in many browsers)
@@ -567,7 +610,7 @@ export default function HomePage() {
                   aria-label="Issue PDF cover"
                   style={{ width: "100%", height: 260, display: "block" }}
                 >
-                  {/* fallback link if object not supported */}
+                  {// fallback link if object not supported }
                   <a href={coverSrc} target="_blank" rel="noreferrer">
                     View issue PDF
                   </a>
@@ -588,7 +631,7 @@ export default function HomePage() {
               />
             )}
 
-            {/* Owner: file attachment control for hero area (optional) */}
+            {// Owner: file attachment control for hero area (optional) }
             <div style={{ padding: 12 }}>
               <FileAttachment
                 contentKey="home.hero.attachment"
@@ -600,7 +643,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Current Issue: cover + articles; cover will be first page of PDF if no cover image */}
+      {// Current Issue: cover + articles; cover will be first page of PDF if no cover image }
       <section
         style={{
           maxWidth: 1120,
@@ -643,7 +686,7 @@ export default function HomePage() {
               alignItems: "start",
             }}
           >
-            {/* Left: cover (image or embedded PDF first page) */}
+            {// Left: cover (image or embedded PDF first page) }
             <div>
               {issue.cover_url ? (
                 <img
@@ -713,7 +756,7 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Right: articles grid (side-by-side with cover) */}
+            {// Right: articles grid (side-by-side with cover)}
             <div
               style={{
                 display: "grid",
@@ -770,3 +813,4 @@ export default function HomePage() {
     </div>
   );
 }
+*/

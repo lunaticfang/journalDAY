@@ -51,15 +51,15 @@ export default function FileAttachment({ contentKey, isEditor }: Props) {
       const ext = file.name.split(".").pop();
       const path = `${contentKey}/${Date.now()}.${ext}`;
 
-      /* ---- Upload to storage bucket (CHANGE BUCKET NAME IF NEEDED) ---- */
+      /* ✅ FIXED BUCKET NAME */
       const { error: uploadErr } = await supabase.storage
-        .from("site-files") // ⚠️ bucket name must exist
+        .from("instructions-pdfs")
         .upload(path, file, { upsert: true });
 
       if (uploadErr) throw uploadErr;
 
       const { data: publicData } = supabase.storage
-        .from("site-files")
+        .from("instructions-pdfs")
         .getPublicUrl(path);
 
       const publicUrl = publicData.publicUrl;
