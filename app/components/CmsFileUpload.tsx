@@ -24,14 +24,14 @@ export default function CmsFileUpload({ contentKey }: Props) {
 
       /* Upload to storage */
       const { error: uploadError } = await supabase.storage
-        .from("cms-media")
+        .from("CMS-MEDIA")
         .upload(path, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       /* Get public URL */
       const { data } = supabase.storage
-        .from("cms-media")
+        .from("CMS-MEDIA")
         .getPublicUrl(path);
 
       const url = data.publicUrl;
