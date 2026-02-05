@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Node, mergeAttributes } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -11,6 +13,57 @@ type Props = {
   isEditor: boolean;
   placeholder?: string;
 };
+
+// Minimal Image node so `<img>` renders as an actual image node (StarterKit doesn't include this).
+const ImageNode = Node.create({
+  name: "image",
+  draggable: true,
+
+  addOptions() {
+    return {
+      inline: false,
+      allowBase64: false,
+      HTMLAttributes: {
+        style: "max-width: 100%; height: auto;",
+      },
+    };
+  },
+
+  inline() {
+    return this.options.inline;
+  },
+
+  group() {
+    return this.options.inline ? "inline" : "block";
+  },
+
+  addAttributes() {
+    return {
+      src: { default: null },
+      alt: { default: null },
+      title: { default: null },
+    };
+  },
+
+  parseHTML() {
+    const allowBase64 = this.options.allowBase64;
+
+    return [
+      {
+        tag: allowBase64
+          ? "img[src]"
+          : 'img[src]:not([src^="data:"])',
+      },
+    ];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "img",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+    ];
+  },
+});
 
 export default function EditableBlock({
   contentKey,
@@ -23,7 +76,15 @@ export default function EditableBlock({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, Placeholder.configure({ placeholder })],
+    extensions: [
+      StarterKit,
+      Link.configure({
+        openOnClick: true,
+        HTMLAttributes: { rel: "noopener noreferrer" },
+      }),
+      ImageNode,
+      Placeholder.configure({ placeholder }),
+    ],
     content: "",
     editable: false,
     immediatelyRender: false,
@@ -175,12 +236,21 @@ export default function EditableBlock({
     const url = data.publicUrl;
 
     if (file.type.startsWith("image/")) {
-      editor.chain().focus().insertContent(`<img src="${url}" style="max-width:100%;" />`).run();
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "image",
+          attrs: { src: url, alt: file.name || "Image" },
+        })
+        .run();
     } else {
       editor
         .chain()
         .focus()
-        .insertContent(`<p><a href="${url}" target="_blank">Download file</a></p>`)
+        .insertContent(
+          `<p><a href="${url}" target="_blank" rel="noopener noreferrer">Download file</a></p>`
+        )
         .run();
     }
   }
