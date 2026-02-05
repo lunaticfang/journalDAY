@@ -160,7 +160,7 @@ export default function EditableBlock({
     const fileName = `${contentKey}/${Date.now()}.${ext}`;
 
     const { error } = await supabase.storage
-      .from("public-files")
+      .from("cms-media")
       .upload(fileName, file, { upsert: true });
 
     if (error) {
@@ -169,7 +169,7 @@ export default function EditableBlock({
     }
 
     const { data } = supabase.storage
-      .from("public-files")
+      .from("cms-media")
       .getPublicUrl(fileName);
 
     const url = data.publicUrl;
