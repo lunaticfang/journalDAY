@@ -1127,7 +1127,10 @@ export default function EditableBlock({
 
   const extensions = useMemo(() => {
     return [
-      StarterKit,
+      StarterKit.configure({
+        link: false,
+        underline: false,
+      }),
       Underline,
       Link.configure({
         openOnClick: false,
