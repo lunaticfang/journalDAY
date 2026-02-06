@@ -315,7 +315,9 @@ const Table = Node.create({
   },
 
   extendNodeSchema(extension) {
-    if (extension.name !== this.name) return {};
+    // TipTap binds `this` to the *target* node context when building the schema,
+    // so we must compare against the actual target node name explicitly.
+    if (extension.name !== "table") return {};
     return { tableRole: "table" };
   },
 });
@@ -333,7 +335,7 @@ const TableRow = Node.create({
   },
 
   extendNodeSchema(extension) {
-    if (extension.name !== this.name) return {};
+    if (extension.name !== "tableRow") return {};
     return { tableRole: "row" };
   },
 });
@@ -380,7 +382,7 @@ const TableCell = Node.create({
   },
 
   extendNodeSchema(extension) {
-    if (extension.name !== this.name) return {};
+    if (extension.name !== "tableCell") return {};
     return { tableRole: "cell" };
   },
 });
@@ -427,7 +429,7 @@ const TableHeader = Node.create({
   },
 
   extendNodeSchema(extension) {
-    if (extension.name !== this.name) return {};
+    if (extension.name !== "tableHeader") return {};
     return { tableRole: "header_cell" };
   },
 });
