@@ -314,7 +314,8 @@ const Table = Node.create({
     ];
   },
 
-  extendNodeSchema() {
+  extendNodeSchema(extension) {
+    if (extension.name !== this.name) return {};
     return { tableRole: "table" };
   },
 });
@@ -331,7 +332,8 @@ const TableRow = Node.create({
     return ["tr", mergeAttributes(HTMLAttributes), 0];
   },
 
-  extendNodeSchema() {
+  extendNodeSchema(extension) {
+    if (extension.name !== this.name) return {};
     return { tableRole: "row" };
   },
 });
@@ -377,7 +379,8 @@ const TableCell = Node.create({
     return ["td", mergeAttributes(HTMLAttributes), 0];
   },
 
-  extendNodeSchema() {
+  extendNodeSchema(extension) {
+    if (extension.name !== this.name) return {};
     return { tableRole: "cell" };
   },
 });
@@ -423,7 +426,8 @@ const TableHeader = Node.create({
     return ["th", mergeAttributes(HTMLAttributes), 0];
   },
 
-  extendNodeSchema() {
+  extendNodeSchema(extension) {
+    if (extension.name !== this.name) return {};
     return { tableRole: "header_cell" };
   },
 });
