@@ -1,141 +1,3 @@
-/*
-"use client";
-
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
-
-type Props = {
-  contentKey: string;
-  isEditor: boolean;
-};
-
-export default function FileAttachment({ contentKey, isEditor }: Props) {
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [fileType, setFileType] = useState<"image" | "pdf" | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [removing, setRemoving] = useState(false);
-
-  /* ---------------- Load existing file ----------------/
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      const { data, error } = await supabase
-        .from("site_files")
-        .select("file_url, file_type")
-        .eq("content_key", contentKey)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Load attachment error:", error);
-        return;
-      }
-
-      if (!cancelled && data) {
-        setFileUrl(data.file_url);
-        setFileType(data.file_type as "image" | "pdf");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [contentKey]);
-
-  /* ---------------- Upload ---------------- 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-
-    try {
-      const ext = file.name.split(".").pop();
-      const path = `${contentKey}/${Date.now()}.${ext}`;
-
-      /* ✅ FIXED BUCKET NAME /
-      const { error: uploadErr } = await supabase.storage
-        .from("instructions-pdfs")
-        .upload(path, file, { upsert: true });
-
-      if (uploadErr) throw uploadErr;
-
-      const { data: publicData } = supabase.storage
-        .from("instructions-pdfs")
-        .getPublicUrl(path);
-
-      const publicUrl = publicData.publicUrl;
-
-      const type: "image" | "pdf" =
-        file.type.startsWith("image") ? "image" : "pdf";
-
-      /* ---- Save metadata in site_files table ---- /
-      const { error: dbErr } = await supabase.from("site_files").upsert({
-        content_key: contentKey,
-        file_url: publicUrl,
-        file_type: type,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (dbErr) throw dbErr;
-
-      setFileUrl(publicUrl);
-      setFileType(type);
-    } catch (err: any) {
-      console.error("Upload failed:", err);
-      alert("Upload failed: " + (err.message || "unknown error"));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  /* ---------------- UI ---------------- /
-  return (
-    <div style={{ marginTop: 12 }}>
-      {/* DISPLAY /}
-      {fileUrl && fileType === "image" && (
-        <img
-          src={fileUrl}
-          alt="attachment"
-          style={{ maxWidth: "100%", borderRadius: 6, marginBottom: 8 }}
-        />
-      )}
-
-      {fileUrl && fileType === "pdf" && (
-        <a
-          href={fileUrl}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: "inline-block",
-            padding: "8px 12px",
-            background: "#6A3291",
-            color: "white",
-            borderRadius: 6,
-            textDecoration: "none",
-          }}
-        >
-          View / Download PDF
-        </a>
-      )}
-
-      {/* UPLOAD (EDITOR ONLY) /}
-      {isEditor && (
-        <div style={{ marginTop: 8 }}>
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={handleUpload}
-            disabled={uploading}
-          />
-          {uploading && <div style={{ fontSize: 12 }}>Uploading…</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-*/
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -159,6 +21,7 @@ export default function FileAttachment({
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"image" | "pdf" | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   /* ---------------- Load existing file ---------------- */
   useEffect(() => {
@@ -205,7 +68,8 @@ export default function FileAttachment({
   async function tryGetPublicUrl(bucket: string, path: string) {
     // call getPublicUrl and try to extract the public URL in multiple shapes
     try {
-      const resp = (supabase.storage.from(bucket).getPublicUrl(path) as any) || null;
+      const resp =
+        (supabase.storage.from(bucket).getPublicUrl(path) as any) || null;
 
       // v2 shape: { data: { publicUrl } }
       if (resp?.data?.publicUrl) return resp.data.publicUrl;
@@ -260,7 +124,10 @@ export default function FileAttachment({
             // bucket not found or other error — remember and try next
             uploadErr = error;
             // if error message contains "Bucket not found" -> try next
-            console.warn(`Upload to bucket "${b}" failed:`, error.message ?? error);
+            console.warn(
+              `Upload to bucket "${b}" failed:`,
+              error.message ?? error
+            );
             continue;
           }
 
@@ -289,7 +156,9 @@ export default function FileAttachment({
         // If the path already appears to be a public URL, keep it
         (path.startsWith("http") ? path : null);
 
-      const type: "image" | "pdf" = file.type.startsWith("image") ? "image" : "pdf";
+      const type: "image" | "pdf" = file.type.startsWith("image")
+        ? "image"
+        : "pdf";
 
       // Save metadata in site_files table.
       // Use onConflict to update by content_key — this requires a UNIQUE constraint on content_key.
@@ -417,7 +286,14 @@ export default function FileAttachment({
             onChange={handleUpload}
             disabled={uploading}
           />
-          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 6,
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
             {uploading && <div style={{ fontSize: 12 }}>Uploading…</div>}
             {fileUrl && (
               <button
