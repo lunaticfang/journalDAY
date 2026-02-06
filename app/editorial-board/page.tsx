@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import FileAttachment from "../components/FileAttachment";
 
 type Member = {
   id: string;
@@ -459,6 +460,14 @@ export default function EditorialBoardPage() {
                     border: "1px solid #e5e7eb",
                   }}
                 >
+                  <div style={{ marginBottom: 10 }}>
+                    <FileAttachment
+                      contentKey={`editorial_board.${m.id}.photo`}
+                      isEditor={isOwner}
+                      bucketName="editorial-photos"
+                      accept="image/*"
+                    />
+                  </div>
                   {editingId === m.id ? (
                     <>
                       <select

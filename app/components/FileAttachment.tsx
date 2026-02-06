@@ -145,12 +145,15 @@ type Props = {
   isEditor: boolean;
   // optional override if you want a single bucket (defaults tried below)
   bucketName?: string;
+  // optional override for file input accept types
+  accept?: string;
 };
 
 export default function FileAttachment({
   contentKey,
   isEditor,
   bucketName,
+  accept,
 }: Props) {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"image" | "pdf" | null>(null);
@@ -363,7 +366,7 @@ export default function FileAttachment({
           <input
             data-content-key={contentKey}
             type="file"
-            accept="image/*,application/pdf"
+            accept={accept ?? "image/*,application/pdf"}
             onChange={handleUpload}
             disabled={uploading}
           />
