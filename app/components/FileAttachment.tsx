@@ -13,6 +13,7 @@ export default function FileAttachment({ contentKey, isEditor }: Props) {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"image" | "pdf" | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   /* ---------------- Load existing file ----------------/
   useEffect(() => {
@@ -330,6 +331,52 @@ export default function FileAttachment({
     }
   }
 
+  function parseStoragePath(url: string) {
+    try {
+      const marker = "/storage/v1/object/public/";
+      const idx = url.indexOf(marker);
+      if (idx === -1) return null;
+      const rest = url.slice(idx + marker.length);
+      const [bucket, ...pathParts] = rest.split("/");
+      if (!bucket || pathParts.length === 0) return null;
+      return { bucket, path: pathParts.join("/") };
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleRemove() {
+    if (!fileUrl) return;
+    if (!confirm("Remove this file?")) return;
+
+    setRemoving(true);
+    try {
+      const parsed = parseStoragePath(fileUrl);
+      if (parsed) {
+        try {
+          await supabase.storage.from(parsed.bucket).remove([parsed.path]);
+        } catch (err) {
+          console.warn("Storage remove failed:", err);
+        }
+      }
+
+      const { error } = await supabase
+        .from("site_files")
+        .delete()
+        .eq("content_key", contentKey);
+
+      if (error) throw error;
+
+      setFileUrl(null);
+      setFileType(null);
+    } catch (err: any) {
+      console.error("Remove failed:", err);
+      alert("Remove failed: " + (err?.message || String(err)));
+    } finally {
+      setRemoving(false);
+    }
+  }
+
   /* ---------------- UI ---------------- */
   return (
     <div style={{ marginTop: 12 }}>
@@ -370,7 +417,27 @@ export default function FileAttachment({
             onChange={handleUpload}
             disabled={uploading}
           />
-          {uploading && <div style={{ fontSize: 12 }}>Uploading…</div>}
+          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {uploading && <div style={{ fontSize: 12 }}>Uploading…</div>}
+            {fileUrl && (
+              <button
+                type="button"
+                onClick={handleRemove}
+                disabled={removing}
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  borderRadius: 6,
+                  border: "1px solid #fecaca",
+                  background: "#fee2e2",
+                  color: "#991b1b",
+                  cursor: "pointer",
+                }}
+              >
+                {removing ? "Removing…" : "Remove"}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

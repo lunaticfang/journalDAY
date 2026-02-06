@@ -157,15 +157,29 @@ export default function EditorialBoardPage() {
           .from("editorial_board")
           .update(payload)
           .eq("id", editingId)
-          .select()
-          .single();
+          .select();
 
         if (error) throw error;
 
-        const updated = data as Member;
-        setMembers((prev) =>
-          prev.map((m) => (m.id === editingId ? { ...m, ...updated } : m))
-        );
+        const updated = Array.isArray(data) ? (data[0] as Member | undefined) : (data as Member | undefined);
+        if (updated) {
+          setMembers((prev) =>
+            prev.map((m) => (m.id === editingId ? { ...m, ...updated } : m))
+          );
+        } else {
+          setMembers((prev) =>
+            prev.map((m) =>
+              m.id === editingId
+                ? {
+                    ...m,
+                    ...payload,
+                    section,
+                    name,
+                  }
+                : m
+            )
+          );
+        }
       } else if (creatingSection) {
         const payload = {
           section,
@@ -182,13 +196,14 @@ export default function EditorialBoardPage() {
         const { data, error } = await supabase
           .from("editorial_board")
           .insert(payload)
-          .select()
-          .single();
+          .select();
 
         if (error) throw error;
 
-        const inserted = data as Member;
-        setMembers((prev) => [...prev, inserted]);
+        const inserted = Array.isArray(data) ? (data[0] as Member | undefined) : (data as Member | undefined);
+        if (inserted) {
+          setMembers((prev) => [...prev, inserted]);
+        }
       }
       cancelEdit();
     } catch (err: any) {
