@@ -2,7 +2,7 @@
 "use client";
 
 import FileAttachment from "./components/FileAttachment";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 import EditableBlock from "./components/EditableBlock";
@@ -312,6 +312,14 @@ export default function HomePage() {
 
   const [coverSrc, setCoverSrc] = useState<string | null>(null);
   const [coverIsPdf, setCoverIsPdf] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState<string | null>(null);
+
+  const handleBannerChange = useCallback(
+    (url: string | null) => {
+      setBannerUrl(url);
+    },
+    []
+  );
 
   /* ---------------- Auth + ownership ---------------- */
   useEffect(() => {
@@ -401,18 +409,15 @@ export default function HomePage() {
     };
   }, []);
 
+  const heroShowPdf = !bannerUrl && coverIsPdf && !!coverSrc;
+  const heroImageSrc =
+    bannerUrl || (!coverIsPdf ? coverSrc : null) || "/Website Banner.jpg";
+
   return (
-    <div style={{ background: "#ffffff", color: "#111827" }}>
+    <div className="home-page">
       {/* Editor-in-Chief */}
-      <section
-        style={{
-          background: "#f9f5ff",
-          borderTop: "1px solid #e5e7eb",
-          borderBottom: "1px solid #e5e7eb",
-          padding: "10px 0",
-        }}
-      >
-        <div style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
+      <section className="home-eic">
+        <div className="home-eic__inner">
           <EditableBlock
             contentKey="home.editor_in_chief"
             isEditor={isOwner}
@@ -422,166 +427,98 @@ export default function HomePage() {
       </section>
 
       {/* Hero section */}
-      <section
-        style={{
-          maxWidth: 1120,
-          margin: "20px auto 32px auto",
-          padding: "0 20px",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.8fr 1.2fr",
-            gap: 28,
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: BRAND_PURPLE,
-                marginBottom: 10,
-              }}
-            >
-              Featured
-            </div>
+      <section className="home-hero">
+        <div className="home-hero__card">
+          <div className="home-hero__grid">
+            <div className="home-hero__content">
+              <div className="home-eyebrow">Featured</div>
 
-            <EditableBlock
-              contentKey="home.hero_title"
-              isEditor={isOwner}
-              placeholder="Advancing knowledge, awareness..."
-            />
-
-            <div style={{ marginTop: 12 }}>
-              <EditableBlock
-                contentKey="home.hero_subtitle"
-                isEditor={isOwner}
-                placeholder="UpDAYtes brings together peer-reviewed research..."
-              />
-            </div>
-
-            <div style={{ marginTop: 18, display: "flex", gap: 12 }}>
-              <Link
-                href="/author/submit"
-                style={{
-                  background: BRAND_PURPLE,
-                  color: "white",
-                  padding: "10px 16px",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  textDecoration: "none",
-                }}
-              >
-                Submit an Article
-              </Link>
-
-              <Link
-                href="/about"
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: 6,
-                  fontSize: 14,
-                  border: "1px solid #e5e7eb",
-                  textDecoration: "none",
-                  color: "#111827",
-                  background: "white",
-                }}
-              >
-                About the Journal
-              </Link>
-            </div>
-          </div>
-
-          <div
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              overflow: "hidden",
-              minHeight: 220,
-            }}
-          >
-            {coverSrc ? (
-              coverIsPdf ? (
-                <object
-                  data={coverSrc}
-                  type="application/pdf"
-                  style={{ width: "100%", height: 260 }}
-                >
-                  <a href={coverSrc} target="_blank" rel="noreferrer">
-                    View issue PDF
-                  </a>
-                </object>
-              ) : (
-                <img
-                  src={coverSrc}
-                  alt="Cover"
-                  style={{ width: "100%", height: 260, objectFit: "cover" }}
+              <div className="home-hero__title">
+                <EditableBlock
+                  contentKey="home.hero_title"
+                  isEditor={isOwner}
+                  placeholder="Advancing knowledge, awareness..."
                 />
-              )
-            ) : (
-              <img
-                src="/Website Banner.jpg"
-                alt="Banner"
-                style={{ width: "100%", height: 260, objectFit: "cover" }}
-              />
-            )}
+              </div>
+
+              <div className="home-hero__subtitle">
+                <EditableBlock
+                  contentKey="home.hero_subtitle"
+                  isEditor={isOwner}
+                  placeholder="UpDAYtes brings together peer-reviewed research..."
+                />
+              </div>
+
+              <div className="home-hero__actions">
+                <Link href="/author/submit" className="home-btn home-btn--primary">
+                  Submit an Article
+                </Link>
+
+                <Link href="/about" className="home-btn home-btn--ghost">
+                  About the Journal
+                </Link>
+              </div>
+            </div>
+
+            <div className="home-hero__media">
+              <div className="home-banner">
+                {heroShowPdf ? (
+                  <object
+                    data={coverSrc ?? undefined}
+                    type="application/pdf"
+                    className="home-banner__pdf"
+                  >
+                    <a href={coverSrc ?? "#"} target="_blank" rel="noreferrer">
+                      View issue PDF
+                    </a>
+                  </object>
+                ) : (
+                  <img
+                    src={heroImageSrc}
+                    alt="Banner"
+                    className="home-banner__image"
+                  />
+                )}
+
+                <div className="home-banner__controls">
+                  <FileAttachment
+                    contentKey="home.banner"
+                    isEditor={isOwner}
+                    bucketName="cms-media"
+                    accept="image/*"
+                    hidePreview
+                    onFileChange={handleBannerChange}
+                    containerStyle={{
+                      marginTop: 0,
+                      display: isOwner ? "block" : "none",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Current Issue */}
-      <section style={{ maxWidth: 1120, margin: "0 auto", padding: "0 20px" }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
-          Current Issue
-        </h2>
+      <section className="home-issue">
+        <div className="home-issue__header">
+          <h2>Current Issue</h2>
+        </div>
 
         {!loading && issue && (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "280px 1fr",
-              gap: 28,
-            }}
-          >
-            <div>
+          <div className="home-issue__grid">
+            <div className="home-issue__cover">
               {coverSrc && !coverIsPdf && (
-                <img
-                  src={coverSrc}
-                  style={{ width: "100%", borderRadius: 6 }}
-                />
+                <img src={coverSrc} alt="Issue cover" />
               )}
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: 14,
-              }}
-            >
+            <div className="home-issue__list">
               {articles.map((a) => (
-                <Link
-                  key={a.id}
-                  href={`/article/${a.id}`}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 6,
-                    padding: 12,
-                    textDecoration: "none",
-                    background: "white",
-                  }}
-                >
-                  <h3 style={{ fontSize: 14, fontWeight: 700 }}>{a.title}</h3>
-                  {a.authors && (
-                    <p style={{ fontSize: 12, color: "#6b7280" }}>
-                      {a.authors}
-                    </p>
-                  )}
+                <Link key={a.id} href={`/article/${a.id}`} className="home-article">
+                  <h3>{a.title}</h3>
+                  {a.authors && <p>{a.authors}</p>}
                 </Link>
               ))}
             </div>
@@ -589,7 +526,7 @@ export default function HomePage() {
         )}
       </section>
 
-      <div style={{ height: 48 }} />
+      <div className="home-spacer" />
     </div>
   );
 }

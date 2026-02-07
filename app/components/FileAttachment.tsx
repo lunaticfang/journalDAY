@@ -10,6 +10,11 @@ type Props = {
   bucketName?: string;
   // optional override for file input accept types
   accept?: string;
+  // optional style overrides
+  containerStyle?: React.CSSProperties;
+  imageStyle?: React.CSSProperties;
+  hidePreview?: boolean;
+  onFileChange?: (url: string | null, type: "image" | "pdf" | null) => void;
 };
 
 export default function FileAttachment({
@@ -17,6 +22,10 @@ export default function FileAttachment({
   isEditor,
   bucketName,
   accept,
+  containerStyle,
+  imageStyle,
+  hidePreview,
+  onFileChange,
 }: Props) {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"image" | "pdf" | null>(null);
@@ -41,8 +50,13 @@ export default function FileAttachment({
         }
 
         if (!cancelled && data) {
-          setFileUrl(data.file_url);
-          setFileType(data.file_type as "image" | "pdf");
+          const url = data.file_url as string | null;
+          const type = data.file_type as "image" | "pdf" | null;
+          setFileUrl(url);
+          setFileType(type);
+          onFileChange?.(url, type);
+        } else if (!cancelled) {
+          onFileChange?.(null, null);
         }
       } catch (e) {
         console.error("Unexpected load error:", e);
@@ -52,7 +66,7 @@ export default function FileAttachment({
     return () => {
       cancelled = true;
     };
-  }, [contentKey]);
+  }, [contentKey, onFileChange]);
 
   /* ---------------- Helper: try candidate buckets until one works ---------------- */
   const candidateBuckets = [
@@ -187,6 +201,7 @@ export default function FileAttachment({
 
       setFileUrl(finalUrl);
       setFileType(type);
+      onFileChange?.(finalUrl, type);
     } catch (err: any) {
       console.error("Upload failed:", err);
       alert("Upload failed: " + (err.message || String(err)));
@@ -238,6 +253,7 @@ export default function FileAttachment({
 
       setFileUrl(null);
       setFileType(null);
+      onFileChange?.(null, null);
     } catch (err: any) {
       console.error("Remove failed:", err);
       alert("Remove failed: " + (err?.message || String(err)));
@@ -248,17 +264,22 @@ export default function FileAttachment({
 
   /* ---------------- UI ---------------- */
   return (
-    <div style={{ marginTop: 12 }}>
+    <div style={{ marginTop: 12, ...containerStyle }}>
       {/* DISPLAY */}
-      {fileUrl && fileType === "image" && (
+      {!hidePreview && fileUrl && fileType === "image" && (
         <img
           src={fileUrl}
           alt="attachment"
-          style={{ maxWidth: "100%", borderRadius: 6, marginBottom: 8 }}
+          style={{
+            maxWidth: "100%",
+            borderRadius: 6,
+            marginBottom: 8,
+            ...imageStyle,
+          }}
         />
       )}
 
-      {fileUrl && fileType === "pdf" && (
+      {!hidePreview && fileUrl && fileType === "pdf" && (
         <a
           href={fileUrl}
           target="_blank"
