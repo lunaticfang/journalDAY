@@ -88,19 +88,17 @@ export default function ArchivePage() {
   const visibleIssues = filteredIssues.slice(0, pageSize);
 
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900">
-      <div className="mx-auto max-w-6xl px-4 py-8">
+    <main className="archive-page">
+      <div className="archive-shell">
         {/* Page title */}
-        <h1 className="mb-6 text-2xl font-semibold tracking-wide text-gray-900">
-          Archive
-        </h1>
+        <header className="archive-header">
+          <h1>Archive</h1>
+        </header>
 
         {/* Filter row */}
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <button
-            className="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 shadow-sm hover:bg-gray-100"
-          >
-            <span className="inline-block h-4 w-4 rounded-sm border border-gray-400" />
+        <div className="archive-filters">
+          <button className="archive-filter archive-filter--ghost">
+            <span className="archive-filter__icon" />
             Filters
           </button>
 
@@ -108,10 +106,8 @@ export default function ArchivePage() {
             <button
               key={tab}
               onClick={() => setActiveFilter(tab)}
-              className={`rounded-full px-4 py-1 text-sm transition ${
-                activeFilter === tab
-                  ? "bg-gray-900 text-white shadow-sm"
-                  : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+              className={`archive-filter ${
+                activeFilter === tab ? "is-active" : ""
               }`}
             >
               {tab}
@@ -120,10 +116,8 @@ export default function ArchivePage() {
 
           <button
             onClick={() => setActiveFilter("All")}
-            className={`rounded-full px-4 py-1 text-sm transition ${
-              activeFilter === "All"
-                ? "bg-gray-900 text-white shadow-sm"
-                : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
+            className={`archive-filter ${
+              activeFilter === "All" ? "is-active" : ""
             }`}
           >
             All
@@ -131,15 +125,14 @@ export default function ArchivePage() {
         </div>
 
         {/* Top right: page size + range text */}
-        <div className="mb-3 flex items-center justify-between text-xs text-gray-600">
+        <div className="archive-toolbar">
           <div />
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1">
+          <div className="archive-toolbar__right">
+            <div className="archive-page-size">
               <span>Show</span>
               <select
                 value={pageSize}
                 onChange={(e) => setPageSize(Number(e.target.value))}
-                className="rounded border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 shadow-sm focus:outline-none"
               >
                 <option value={10}>10</option>
                 <option value={25}>25</option>
@@ -157,9 +150,9 @@ export default function ArchivePage() {
         </div>
 
         {/* Table */}
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="archive-table">
           {/* Header */}
-          <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-100 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+          <div className="archive-row archive-row--head">
             <div>Year</div>
             <div>Volume</div>
             <div>Issue</div>
@@ -167,65 +160,39 @@ export default function ArchivePage() {
             <div>Supplement</div>
             <div>Type</div>
             <div>Title</div>
-            <div className="text-right">View</div>
+            <div className="archive-row__right">View</div>
           </div>
 
-          {loading && (
-            <div className="px-4 py-4 text-sm text-gray-600">
-              Loading issues…
-            </div>
-          )}
+          {loading && <div className="archive-state">Loading issues…</div>}
 
           {!loading && errorMsg && (
-            <div className="px-4 py-4 text-sm text-red-600">
+            <div className="archive-state archive-state--error">
               Failed to load issues: {errorMsg}
             </div>
           )}
 
           {!loading &&
             !errorMsg &&
-            visibleIssues.map((issue, idx) => (
-              <div
-                key={issue.id}
-                className={`grid grid-cols-8 px-4 py-3 text-sm ${
-                  idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                }`}
-              >
-                <div className="text-gray-800">{issue.year ?? "-"}</div>
-                <div className="text-gray-800">{issue.volume ?? "-"}</div>
-                <div className="text-gray-800">
-                  {issue.issue_number ?? "-"}
-                </div>
-                <div>
-                  <span className="text-indigo-600 hover:underline">
-                    {issue.month ?? "-"}
-                  </span>
-                </div>
-                <div className="text-gray-700">
-                  {issue.supplement ?? "-"}
-                </div>
-                <div className="text-gray-700">{issue.type}</div>
-                <div className="text-gray-900">
-                  {issue.title ?? "-"}
-                </div>
-                <div className="text-right">
-                  <Link
-                    href={`/issues/${issue.id}`}
-                    className="text-sm font-semibold text-emerald-600 hover:text-emerald-500"
-                  >
+            visibleIssues.map((issue) => (
+              <div key={issue.id} className="archive-row">
+                <div>{issue.year ?? "-"}</div>
+                <div>{issue.volume ?? "-"}</div>
+                <div>{issue.issue_number ?? "-"}</div>
+                <div className="archive-row__month">{issue.month ?? "-"}</div>
+                <div>{issue.supplement ?? "-"}</div>
+                <div>{issue.type}</div>
+                <div className="archive-row__title">{issue.title ?? "-"}</div>
+                <div className="archive-row__right">
+                  <Link href={`/issues/${issue.id}`} className="archive-link">
                     View →
                   </Link>
                 </div>
               </div>
             ))}
 
-          {!loading &&
-            !errorMsg &&
-            visibleIssues.length === 0 && (
-              <div className="px-4 py-6 text-sm text-gray-500">
-                No issues found.
-              </div>
-            )}
+          {!loading && !errorMsg && visibleIssues.length === 0 && (
+            <div className="archive-state">No issues found.</div>
+          )}
         </div>
       </div>
     </main>
