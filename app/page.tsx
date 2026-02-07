@@ -279,7 +279,7 @@ export default function HomePage() {
 "use client";
 
 import FileAttachment from "./components/FileAttachment";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 import EditableBlock from "./components/EditableBlock";
