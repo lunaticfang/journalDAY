@@ -1,11 +1,15 @@
 // pages/api/admin/insert-issue.js
 // Debugging version — safe to run locally. Does NOT print secret values.
 import { supabaseServer } from '../../../lib/supabaseServer';
+import { requireEditor } from "../../../lib/adminAuth";
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
+    const auth = await requireEditor(req, res);
+    if (!auth) return;
+
     // 1) sanity flags about env & client
     const envInfo = {
       has_service_role_key: !!process.env.SUPABASE_SERVICE_ROLE_KEY,

@@ -321,6 +321,57 @@ export default function HomePage() {
     []
   );
 
+  const resolveCoverFromIssue = useCallback(
+    (latest: Issue | null) => {
+      if (!latest) {
+        setCoverSrc(null);
+        setCoverIsPdf(false);
+        return;
+      }
+
+      if (latest.cover_url) {
+        setCoverSrc(latest.cover_url);
+        setCoverIsPdf(false);
+        return;
+      }
+
+      if (latest.pdf_path) {
+        const raw = latest.pdf_path as string;
+
+        // If pdf_path is already a URL, just use it
+        if (raw.startsWith("http")) {
+          setCoverSrc(raw + "#page=1");
+          setCoverIsPdf(true);
+          return;
+        }
+
+        try {
+          const { data: publicData } = supabase.storage
+            .from("instructions-pdfs")
+            .getPublicUrl(raw);
+
+          if (publicData?.publicUrl) {
+            setCoverSrc(publicData.publicUrl + "#page=1");
+            setCoverIsPdf(true);
+          } else {
+            setCoverSrc(null);
+            setCoverIsPdf(false);
+          }
+        } catch (err) {
+          console.error("Could not resolve pdf public URL:", err);
+          setCoverSrc(null);
+          setCoverIsPdf(false);
+        }
+
+        return;
+      }
+
+      setCoverSrc(null);
+      setCoverIsPdf(false);
+    },
+    []
+  );
+
   /* ---------------- Auth + ownership ---------------- */
   useEffect(() => {
     let mounted = true;
@@ -349,55 +400,29 @@ export default function HomePage() {
 
     (async () => {
       try {
-        const { data: issues } = await supabase
-          .from("issues")
-          .select(
-            "id, title, volume, issue_number, published_at, cover_url, pdf_path"
-          )
-          .order("published_at", { ascending: false })
-          .limit(1);
+        setLoading(true);
 
-        if (!issues || issues.length === 0) return;
-        const latest = issues[0] as Issue;
+        const resp = await fetch("/api/issues/latest");
+        const json = await resp.json().catch(() => ({}));
+
+        if (!resp.ok) {
+          throw new Error(json?.error || "Failed to load latest issue");
+        }
+
+        const latest = (json?.issue || null) as Issue | null;
+        const articleRows = (json?.articles || []) as Article[];
+
         if (cancelled) return;
 
         setIssue(latest);
-
-        const { data: articleRows } = await supabase
-          .from("articles")
-          .select("id, title, authors")
-          .eq("issue_id", latest.id)
-          .order("created_at", { ascending: true });
-
+        setArticles(articleRows);
+        resolveCoverFromIssue(latest);
+      } catch (err) {
+        console.error("HomePage load error:", err);
         if (!cancelled) {
-          setArticles(articleRows || []);
-        }
-
-        /* -------- COVER RESOLUTION (FIXED BUCKET) -------- */
-        if (latest.cover_url) {
-          setCoverSrc(latest.cover_url);
-          setCoverIsPdf(false);
-        } else if (latest.pdf_path) {
-          try {
-            const { data: publicData } = supabase.storage
-              .from("instructions-pdfs") // ✅ FIXED BUCKET
-              .getPublicUrl(latest.pdf_path as string);
-
-            if (publicData?.publicUrl) {
-              setCoverSrc(publicData.publicUrl + "#page=1");
-              setCoverIsPdf(true);
-            } else {
-              setCoverSrc(null);
-              setCoverIsPdf(false);
-            }
-          } catch (err) {
-            console.error("Could not resolve pdf public URL:", err);
-            setCoverSrc(null);
-            setCoverIsPdf(false);
-          }
-        } else {
-          setCoverSrc(null);
-          setCoverIsPdf(false);
+          setIssue(null);
+          setArticles([]);
+          resolveCoverFromIssue(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -407,7 +432,54 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resolveCoverFromIssue]);
+
+  const handleIssueCoverChange = useCallback(
+    async (url: string | null) => {
+      // Update UI immediately
+      if (url) {
+        setCoverSrc(url);
+        setCoverIsPdf(false);
+      } else {
+        resolveCoverFromIssue(issue ? { ...issue, cover_url: null } : null);
+      }
+
+      if (!issue?.id) return;
+
+      // Avoid spamming updates when FileAttachment is just hydrating state
+      const current = issue.cover_url ?? null;
+      if (url === current) return;
+
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+
+        if (!token) {
+          console.warn("No auth token found for cover update");
+          return;
+        }
+
+        const resp = await fetch(`/api/issues/${issue.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ cover_url: url }),
+        });
+
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(json?.error || "Failed to update issue cover");
+        }
+
+        setIssue((prev) => (prev ? { ...prev, cover_url: url } : prev));
+      } catch (err) {
+        console.error("Issue cover update failed:", err);
+      }
+    },
+    [issue, resolveCoverFromIssue]
+  );
 
   const heroShowPdf = !bannerUrl && coverIsPdf && !!coverSrc;
   const heroImageSrc =
@@ -506,21 +578,61 @@ export default function HomePage() {
           <h2>Current Issue</h2>
         </div>
 
+        {loading && <p className="home-muted">Loading current issue…</p>}
+
+        {!loading && !issue && (
+          <p className="home-muted">No issue found yet.</p>
+        )}
+
         {!loading && issue && (
           <div className="home-issue__grid">
             <div className="home-issue__cover">
-              {coverSrc && !coverIsPdf && (
-                <img src={coverSrc} alt="Issue cover" />
+              {coverSrc ? (
+                coverIsPdf ? (
+                  <object
+                    data={coverSrc}
+                    type="application/pdf"
+                    className="home-banner__pdf"
+                  >
+                    <a href={coverSrc} target="_blank" rel="noreferrer">
+                      View issue PDF
+                    </a>
+                  </object>
+                ) : (
+                  <img src={coverSrc} alt="Issue cover" />
+                )
+              ) : (
+                <div className="home-muted">No cover yet.</div>
+              )}
+
+              {isOwner && (
+                <FileAttachment
+                  contentKey={`issue.${issue.id}.cover`}
+                  isEditor={isOwner}
+                  bucketName="cms-media"
+                  accept="image/*"
+                  hidePreview
+                  onFileChange={(url) => handleIssueCoverChange(url)}
+                  containerStyle={{ marginTop: 10 }}
+                />
               )}
             </div>
 
             <div className="home-issue__list">
-              {articles.map((a) => (
-                <Link key={a.id} href={`/article/${a.id}`} className="home-article">
-                  <h3>{a.title}</h3>
-                  {a.authors && <p>{a.authors}</p>}
-                </Link>
-              ))}
+              {articles.length > 0 ? (
+                articles.map((a) => (
+                  <Link
+                    key={a.id}
+                    href={`/article/${a.id}`}
+                    className="home-article"
+                  >
+                    <h3>{a.title}</h3>
+                    {a.authors && <p>{a.authors}</p>}
+                  </Link>
+                ))
+              ) : (
+                <p className="home-muted">No articles added to this issue yet.</p>
+              )}
             </div>
           </div>
         )}

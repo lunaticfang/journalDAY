@@ -1,5 +1,6 @@
 // pages/api/admin/list-manuscripts.js
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { requireEditor } from "../../../lib/adminAuth";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -7,7 +8,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // TODO: add real auth check so only editors/managers can call this.
+    const auth = await requireEditor(req, res);
+    if (!auth) return;
+
     const { data, error } = await supabaseServer
       .from("manuscripts")
       .select("id, title, status, submitter_id, created_at")

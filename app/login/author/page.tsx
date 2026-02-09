@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 
 type Profile = {
   id: string;
-  role: "admin" | "author";
+  role: "admin" | "editor" | "reviewer" | "author";
   approved?: boolean | null;
 };
 
@@ -65,8 +65,13 @@ export default function LoginPage() {
       const profile = await ensureProfile(user);
       if (!mounted) return;
 
-      // Admins go to admin only if approved
-      if (profile?.role === "admin" && profile.approved === true) {
+      const isStaff =
+        profile?.approved === true &&
+        (profile.role === "admin" ||
+          profile.role === "editor" ||
+          profile.role === "reviewer");
+
+      if (isStaff) {
         router.replace("/admin");
       } else {
         // All normal users land here
@@ -83,7 +88,13 @@ export default function LoginPage() {
 
         const profile = await ensureProfile(user);
 
-        if (profile?.role === "admin" && profile.approved === true) {
+        const isStaff =
+          profile?.approved === true &&
+          (profile.role === "admin" ||
+            profile.role === "editor" ||
+            profile.role === "reviewer");
+
+        if (isStaff) {
           router.replace("/admin");
         } else {
           router.replace("/author/submit");

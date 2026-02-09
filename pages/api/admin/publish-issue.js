@@ -1,5 +1,6 @@
 // pages/api/admin/publish-issue.js
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { requireEditor } from "../../../lib/adminAuth";
 
 /**
  * Publish issue API
@@ -18,6 +19,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    const auth = await requireEditor(req, res);
+    if (!auth) return;
+
     const {
       title,
       volume,

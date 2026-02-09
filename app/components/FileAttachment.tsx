@@ -46,6 +46,10 @@ export default function FileAttachment({
 
         if (error) {
           console.error("Load attachment error:", error);
+          if (!cancelled) {
+            setFileUrl(null);
+            setFileType(null);
+          }
           return;
         }
 
@@ -56,10 +60,17 @@ export default function FileAttachment({
           setFileType(type);
           onFileChange?.(url, type);
         } else if (!cancelled) {
-          onFileChange?.(null, null);
+          // Clear internal state, but don't emit onFileChange(null) on mount.
+          // Consumers can treat "no callback" as "no file yet".
+          setFileUrl(null);
+          setFileType(null);
         }
       } catch (e) {
         console.error("Unexpected load error:", e);
+        if (!cancelled) {
+          setFileUrl(null);
+          setFileType(null);
+        }
       }
     })();
 

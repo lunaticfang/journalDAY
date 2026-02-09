@@ -1,457 +1,496 @@
-/*"use client";
+"use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 type Manuscript = {
   id: string;
   title: string | null;
   status: string | null;
-  submitter_id: string | null;
+  created_at: string | null;
+  authors?: string | null;
+};
+
+type ReviewAssignment = {
+  id: string;
+  manuscript_id: string;
+  reviewer_id: string;
+  recommendation?: string | null;
+  created_at?: string | null;
+};
+
+type Reviewer = {
+  id: string;
+  email?: string | null;
+  full_name?: string | null;
+};
+
+type Notification = {
+  id: string;
+  title: string | null;
+  body: string | null;
+  manuscript_id: string | null;
   created_at: string | null;
 };
 
+const STATUS_COLUMNS = [
+  { key: "submitted", label: "New" },
+  { key: "under_review", label: "In Review" },
+  { key: "revisions_requested", label: "Revisions Requested" },
+  { key: "accepted", label: "Accepted" },
+  { key: "rejected", label: "Rejected" },
+  { key: "published", label: "Published" },
+];
+
+const STATUS_OPTIONS = [
+  "submitted",
+  "under_review",
+  "revisions_requested",
+  "accepted",
+  "rejected",
+];
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "today", label: "Today" },
+  { key: "unassigned", label: "Unassigned" },
+  { key: "overdue", label: "Overdue" },
+];
+
+function parseAuthors(raw: string | null | undefined) {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function leadAuthorName(raw: string | null | undefined) {
+  const authors = parseAuthors(raw);
+  return authors[0]?.name || authors[0]?.email || "Unknown author";
+}
+
+function daysAgo(dateString: string | null | undefined) {
+  if (!dateString) return "-";
+  const ms = Date.now() - new Date(dateString).getTime();
+  const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+  if (Number.isNaN(days)) return "-";
+  if (days <= 0) return "Today";
+  return `${days}d`;
+}
+
 export default function AdminPage() {
   const router = useRouter();
-  const [checkingUser, setCheckingUser] = useState(true);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [token, setToken] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
+  const [queue, setQueue] = useState<Record<string, Manuscript[]>>({});
+  const [assignments, setAssignments] = useState<
+    Record<string, ReviewAssignment[]>
+  >({});
+  const [reviewers, setReviewers] = useState<Reviewer[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [error, setError] = useState("");
+  const [loadingQueue, setLoadingQueue] = useState(true);
+  const [filter, setFilter] = useState("all");
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assignInputs, setAssignInputs] = useState<Record<string, string>>({});
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
 
-  const [loadingTable, setLoadingTable] = useState(true);
-  const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
-  const [errorMsg, setErrorMsg] = useState("");
-
-  // 1) Guard: ensure user is signed in, otherwise go to /admin/login
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
-      const { data } = await supabase.auth.getUser();
+    async function init() {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      const user = session?.user ?? null;
 
-      if (!data?.user) {
-        if (!mounted) return;
+      if (!user) {
         router.replace("/admin/login");
         return;
       }
 
       if (!mounted) return;
-      setUserEmail(data.user.email ?? null);
-      setCheckingUser(false);
-    })();
+      setToken(session?.access_token ?? null);
+      setChecking(false);
+    }
+
+    init();
 
     return () => {
       mounted = false;
     };
   }, [router]);
 
-  // 2) Load manuscripts from API once user is confirmed
-  useEffect(() => {
-    if (checkingUser) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setLoadingTable(true);
-        setErrorMsg("");
-
-        const resp = await fetch("/api/admin/list-manuscripts");
-        const json = await resp.json();
-
-        if (!resp.ok) {
-          throw new Error(json?.error || "Failed to load submissions");
-        }
-
-        if (!cancelled) {
-          setManuscripts(json.manuscripts || []);
-        }
-      } catch (err: any) {
-        console.error(err);
-        if (!cancelled) {
-          setErrorMsg(err.message || String(err));
-        }
-      } finally {
-        if (!cancelled) setLoadingTable(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [checkingUser]);
-
-  async function handleViewPdf(manuscriptId: string) {
+  async function loadQueue(activeToken: string | null) {
     try {
-      setErrorMsg("");
-      const resp = await fetch(`/api/submissions/${manuscriptId}/signed-url`);
+      setError("");
+      setLoadingQueue(true);
+      const resp = await fetch("/api/admin/queue", {
+        headers: activeToken
+          ? { Authorization: `Bearer ${activeToken}` }
+          : undefined,
+      });
       const json = await resp.json();
-      if (!resp.ok) throw new Error(json?.error || "Could not get signed URL");
-      if (!json.signedUrl) throw new Error("No signed URL returned");
-      window.open(json.signedUrl, "_blank", "noopener,noreferrer");
+      if (!resp.ok) throw new Error(json?.error || "Failed to load queue");
+
+      setQueue(json.queue || {});
+      setAssignments(json.assignments || {});
+      setReviewers(json.reviewers || []);
+      setRole(json.role || null);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || String(err));
+      setError(err.message || String(err));
+    } finally {
+      setLoadingQueue(false);
     }
   }
 
-  if (checkingUser) {
-    return (
-      <main style={{ padding: 24 }}>
-        <p>Checking your session…</p>
-      </main>
-    );
-  }
-
-  return (
-    <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600 }}>Admin dashboard</h1>
-        <p style={{ marginTop: 4, color: "#666" }}>
-          Signed in as <strong>{userEmail ?? "unknown user"}</strong>.
-        </p>
-        <div style={{ marginTop: 12 }}>
-          <Link href="/admin/upload" style={{ marginRight: 16, textDecoration: "underline" }}>
-            Upload new issue/manuscript
-          </Link>
-          <Link href="/author/submit" style={{ textDecoration: "underline" }}>
-            Submit as author
-          </Link>
-        </div>
-      </header>
-
-      <section>
-        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Submissions</h2>
-
-        {loadingTable && <p>Loading submissions…</p>}
-
-        {errorMsg && (
-          <p style={{ color: "crimson", marginBottom: 8 }}>Error: {errorMsg}</p>
-        )}
-
-        {!loadingTable && manuscripts.length === 0 && !errorMsg && (
-          <p>No submissions yet.</p>
-        )}
-
-        {!loadingTable && manuscripts.length > 0 && (
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 14,
-              marginTop: 8,
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>Title</th>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>Status</th>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>Submitted</th>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {manuscripts.map((m) => (
-                <tr key={m.id}>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                    {m.title || "(untitled)"}
-                  </td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                    {m.status || "submitted"}
-                  </td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                    {m.created_at
-                      ? new Date(m.created_at).toLocaleString()
-                      : "-"}
-                  </td>
-                  <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                    <button
-                      onClick={() => handleViewPdf(m.id)}
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: 4,
-                        border: "1px solid #ccc",
-                        cursor: "pointer",
-                      }}
-                    >
-                      View PDF
-                    </button>
-                    {// Later: add buttons like "Assign reviewers", "Advance stage", etc. //}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
-    </main>
-  );
-}*/
-
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { supabase } from "../../lib/supabaseClient";
-
-type Manuscript = {
-  id: string;
-  title: string | null;
-  status: string | null;
-  submitter_id?: string | null;
-  created_at: string | null;
-};
-
-const STATUS_OPTIONS = [
-  "submitted",
-  "under_review",
-  "accepted",
-  "rejected",
-  "published",
-];
-
-export default function AdminPage() {
-  const router = useRouter();
-  const [checkingUser, setCheckingUser] = useState(true);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-
-  const [loadingTable, setLoadingTable] = useState(true);
-  const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  // 1) Guard: ensure user is signed in, otherwise go to /admin/login
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const user = data?.session?.user ?? null;
-
-      if (!user) {
-        if (mounted) router.replace("/admin/login");
-        return;
-      }
-
-      if (mounted) {
-        setUserEmail(user.email ?? null);
-        setCheckingUser(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [router]);
-
-  // 2) Load manuscripts from API once user is confirmed
-  useEffect(() => {
-    if (checkingUser) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setLoadingTable(true);
-        setErrorMsg("");
-
-        const resp = await fetch("/api/admin/list-manuscripts");
-        const json = await resp.json();
-
-        if (!resp.ok) {
-          throw new Error(json?.error || "Failed to load submissions");
-        }
-
-        if (!cancelled) {
-          setManuscripts(json.manuscripts || []);
-        }
-      } catch (err: any) {
-        console.error(err);
-        if (!cancelled) {
-          setErrorMsg(err.message || String(err));
-        }
-      } finally {
-        if (!cancelled) setLoadingTable(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [checkingUser]);
-
-  async function handleViewPdf(manuscriptId: string) {
+  async function loadNotifications(activeToken: string | null) {
     try {
-      setErrorMsg("");
-      const resp = await fetch(`/api/submissions/${manuscriptId}/signed-url`);
+      const resp = await fetch("/api/admin/notifications?limit=6", {
+        headers: activeToken
+          ? { Authorization: `Bearer ${activeToken}` }
+          : undefined,
+      });
       const json = await resp.json();
-      if (!resp.ok) throw new Error(json?.error || "Could not get signed URL");
-      if (!json.signedUrl) throw new Error("No signed URL returned");
-      window.open(json.signedUrl, "_blank", "noopener,noreferrer");
-    } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || String(err));
+      if (!resp.ok) return;
+      setNotifications(json.notifications || []);
+    } catch (err) {
+      console.warn("notifications load failed:", err);
     }
   }
 
-  async function handleStatusChange(manuscriptId: string, newStatus: string) {
-    try {
-      setUpdatingId(manuscriptId);
-      setErrorMsg("");
+  useEffect(() => {
+    if (checking) return;
+    loadQueue(token);
+    loadNotifications(token);
+  }, [checking, token]);
 
-      const resp = await fetch("/api/admin/update-manuscript-status", {
+  async function handleAssign(manuscriptId: string) {
+    const email = assignInputs[manuscriptId] || "";
+    if (!email.trim()) {
+      setError("Provide a reviewer email before assigning.");
+      return;
+    }
+
+    try {
+      setError("");
+      setAssigningId(manuscriptId);
+
+      const resp = await fetch("/api/admin/review/assign", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ manuscriptId, status: newStatus }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          manuscript_id: manuscriptId,
+          reviewer_email: email.trim(),
+        }),
       });
 
       const json = await resp.json();
-      if (!resp.ok) {
-        throw new Error(json?.error || "Failed to update status");
-      }
+      if (!resp.ok) throw new Error(json?.error || "Failed to assign reviewer");
 
-      const updated = json.manuscript as Manuscript;
-
-      setManuscripts((prev) =>
-        prev.map((m) => (m.id === manuscriptId ? { ...m, status: updated.status } : m))
-      );
+      setAssignInputs((prev) => ({ ...prev, [manuscriptId]: "" }));
+      setAssigningId(null);
+      await loadQueue(token);
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || String(err));
-    } finally {
-      setUpdatingId(null);
+      setError(err.message || String(err));
+      setAssigningId(null);
     }
   }
 
-  if (checkingUser) {
+  async function handleStatusChange(manuscriptId: string, status: string) {
+    try {
+      setError("");
+      setStatusBusyId(manuscriptId);
+
+      const resp = await fetch("/api/admin/update-manuscript-status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ manuscriptId, status }),
+      });
+
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json?.error || "Failed to update status");
+
+      await loadQueue(token);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || String(err));
+    } finally {
+      setStatusBusyId(null);
+    }
+  }
+
+  const filteredQueue = useMemo(() => {
+    const result: Record<string, Manuscript[]> = {};
+    const now = new Date();
+
+    const isToday = (dateString: string | null | undefined) => {
+      if (!dateString) return false;
+      const d = new Date(dateString);
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    };
+
+    const isOverdue = (m: Manuscript) => {
+      if (!m.created_at) return false;
+      const ageDays =
+        (Date.now() - new Date(m.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      return ageDays >= 14;
+    };
+
+    STATUS_COLUMNS.forEach((col) => {
+      const list = queue[col.key] || [];
+      result[col.key] = list.filter((m) => {
+        if (filter === "today") return isToday(m.created_at);
+        if (filter === "unassigned") {
+          const assigned = assignments[m.id] || [];
+          return assigned.length === 0;
+        }
+        if (filter === "overdue") {
+          return (
+            (m.status === "under_review" ||
+              m.status === "revisions_requested") &&
+            isOverdue(m)
+          );
+        }
+        return true;
+      });
+    });
+
+    return result;
+  }, [queue, assignments, filter]);
+
+  if (checking) {
     return (
-      <main style={{ padding: 24 }}>
-        <p>Checking your session…</p>
+      <main className="admin-page">
+        <div className="admin-shell">
+          <p className="admin-muted">Checking session...</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600 }}>Admin dashboard</h1>
-        <p style={{ marginTop: 4, color: "#666" }}>
-          Signed in as <strong>{userEmail ?? "unknown user"}</strong>.
-        </p>
-        <div style={{ marginTop: 12 }}>
-          <Link href="/admin/upload" style={{ marginRight: 16, textDecoration: "underline" }}>
-            Upload new issue/manuscript
-          </Link>
-          <Link href="/admin/publish" style={{ marginRight: 16, textDecoration: "underline" }}>
-            Publish issue
-          </Link>
-          <Link href="/author/submit" style={{ textDecoration: "underline" }}>
-            Submit as author
-          </Link>
+    <main className="admin-page">
+      <div className="admin-shell">
+        <header className="admin-header">
+          <div>
+            <p className="admin-eyebrow">Submission Inbox</p>
+            <h1 className="admin-title">Editorial Control Center</h1>
+            <p className="admin-subtitle">
+              Review, route, and publish submissions with fewer clicks.
+            </p>
+          </div>
+          <div className="admin-header__actions">
+            <Link href="/admin/publish" className="admin-btn admin-btn--ghost">
+              Publish issue
+            </Link>
+            <Link href="/author/submit" className="admin-btn admin-btn--primary">
+              New submission
+            </Link>
+          </div>
+        </header>
+
+        {error && <div className="admin-alert admin-alert--error">{error}</div>}
+        {loadingQueue && !error && (
+          <div className="admin-alert">Loading queue...</div>
+        )}
+
+        <div className="admin-toolbar">
+          <div className="admin-filters">
+            {FILTERS.map((f) => (
+              <button
+                key={f.key}
+                className={
+                  filter === f.key
+                    ? "admin-filter is-active"
+                    : "admin-filter"
+                }
+                onClick={() => setFilter(f.key)}
+                type="button"
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="admin-meta">
+            {role ? <span className="admin-tag">{role}</span> : null}
+            <button
+              className="admin-btn admin-btn--ghost"
+              type="button"
+              onClick={() => {
+                loadQueue(token);
+                loadNotifications(token);
+              }}
+            >
+              Refresh
+            </button>
+          </div>
         </div>
-      </header>
 
-      <section>
-        <h2 style={{ fontSize: 18, marginBottom: 8 }}>Submissions</h2>
-
-        {loadingTable && <p>Loading submissions…</p>}
-
-        {errorMsg && (
-          <p style={{ color: "crimson", marginBottom: 8 }}>Error: {errorMsg}</p>
-        )}
-
-        {!loadingTable && manuscripts.length === 0 && !errorMsg && (
-          <p>No submissions yet.</p>
-        )}
-
-        {!loadingTable && manuscripts.length > 0 && (
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 14,
-              marginTop: 8,
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>
-                  Title
-                </th>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>
-                  Status
-                </th>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>
-                  Submitted
-                </th>
-                <th style={{ borderBottom: "1px solid #ddd", textAlign: "left", padding: 8 }}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {manuscripts.map((m) => {
-                const statusValue = m.status || "submitted";
-                const isUpdating = updatingId === m.id;
-
+        <div className="admin-grid">
+          <section className="admin-queue">
+            <div className="admin-columns">
+              {STATUS_COLUMNS.map((column) => {
+                const list = filteredQueue[column.key] || [];
                 return (
-                  <tr key={m.id}>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                      {m.title || "(untitled)"}
-                    </td>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                      <select
-                        value={statusValue}
-                        onChange={(e) => handleStatusChange(m.id, e.target.value)}
-                        disabled={isUpdating}
-                        style={{
-                          padding: "4px 6px",
-                          borderRadius: 4,
-                          border: "1px solid #d1d5db",
-                          fontSize: 13,
-                          background: isUpdating ? "#f3f4f6" : "white",
-                        }}
-                      >
-                        {STATUS_OPTIONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                      {m.created_at
-                        ? new Date(m.created_at).toLocaleString()
-                        : "-"}
-                    </td>
-                    <td style={{ borderBottom: "1px solid #eee", padding: 8 }}>
-                      <button
-                        onClick={() => handleViewPdf(m.id)}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          border: "1px solid #ccc",
-                          cursor: "pointer",
-                          fontSize: 13,
-                          marginRight: 8,
-                        }}
-                      >
-                        View PDF
-                      </button>
-                      {isUpdating && (
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          Updating…
-                        </span>
+                  <div className="admin-column" key={column.key}>
+                    <div className="admin-column__header">
+                      <h2>{column.label}</h2>
+                      <span>{list.length}</span>
+                    </div>
+                    <div className="admin-column__list">
+                      {list.length === 0 && (
+                        <p className="admin-muted">No items</p>
                       )}
-                    </td>
-                  </tr>
+                      {list.map((m) => {
+                        const assigned = assignments[m.id] || [];
+                        const isPublished = m.status === "published";
+                        const statusValue = STATUS_OPTIONS.includes(
+                          m.status || "submitted"
+                        )
+                          ? m.status || "submitted"
+                          : "submitted";
+                        return (
+                          <article key={m.id} className="admin-card">
+                            <div className="admin-card__top">
+                              <div>
+                                <p className="admin-card__title">
+                                  {m.title || "(untitled)"}
+                                </p>
+                                <p className="admin-card__meta">
+                                  {leadAuthorName(m.authors)} - {daysAgo(m.created_at)}
+                                </p>
+                              </div>
+                              <span className={`admin-status admin-status--${m.status || "submitted"}`}>
+                                {m.status || "submitted"}
+                              </span>
+                            </div>
+
+                            <div className="admin-card__details">
+                              <span>
+                                Reviewer assignments: {assigned.length}
+                              </span>
+                              {assigned.length === 0 && (
+                                <span className="admin-muted">Unassigned</span>
+                              )}
+                            </div>
+
+                            <div className="admin-card__actions">
+                              <Link
+                                href={`/admin/submissions/${m.id}`}
+                                className="admin-btn admin-btn--ghost"
+                              >
+                                Open
+                              </Link>
+
+                              {role !== "reviewer" && (
+                                <>
+                                  {!isPublished ? (
+                                    <select
+                                      className="admin-select"
+                                      value={statusValue}
+                                      disabled={statusBusyId === m.id}
+                                      onChange={(e) =>
+                                        handleStatusChange(m.id, e.target.value)
+                                      }
+                                    >
+                                      {STATUS_OPTIONS.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="admin-muted">Published</span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+
+                            {role !== "reviewer" && (
+                              <div className="admin-card__assign">
+                                <input
+                                  className="admin-input"
+                                  placeholder="Assign reviewer email"
+                                  list={`reviewers-${m.id}`}
+                                  value={assignInputs[m.id] || ""}
+                                  onChange={(e) =>
+                                    setAssignInputs((prev) => ({
+                                      ...prev,
+                                      [m.id]: e.target.value,
+                                    }))
+                                  }
+                                />
+                                <datalist id={`reviewers-${m.id}`}>
+                                  {reviewers.map((r) => (
+                                    <option key={r.id} value={r.email || ""}>
+                                      {r.full_name || r.email}
+                                    </option>
+                                  ))}
+                                </datalist>
+                                <button
+                                  className="admin-btn admin-btn--primary"
+                                  type="button"
+                                  onClick={() => handleAssign(m.id)}
+                                  disabled={
+                                    assigningId === m.id ||
+                                    !(assignInputs[m.id] || "").trim()
+                                  }
+                                >
+                                  {assigningId === m.id ? "Assigning..." : "Assign"}
+                                </button>
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        )}
-      </section>
+            </div>
+          </section>
+
+          <aside className="admin-side">
+            <div className="admin-panel">
+              <h3>Notifications</h3>
+              {notifications.length === 0 && (
+                <p className="admin-muted">No updates yet.</p>
+              )}
+              <ul className="admin-notes">
+                {notifications.map((n) => (
+                  <li key={n.id}>
+                    <strong>{n.title || "Update"}</strong>
+                    <p>{n.body}</p>
+                    {n.manuscript_id && (
+                      <Link href={`/admin/submissions/${n.manuscript_id}`}>
+                        View submission
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

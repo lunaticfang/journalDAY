@@ -85,7 +85,7 @@ function Dropdown({
 
 export default function MainNav() {
   const [user, setUser] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
 
   useEffect(() => {
     const getUser = async () => {
@@ -298,7 +298,7 @@ function Dropdown({
 export default function MainNav() {
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -311,7 +311,7 @@ export default function MainNav() {
 
       if (!user) {
         setIsLoggedIn(false);
-        setIsAdmin(false);
+        setIsStaff(false);
         setLoading(false);
         return;
       }
@@ -323,7 +323,10 @@ export default function MainNav() {
         .maybeSingle();
 
       setIsLoggedIn(true);
-      setIsAdmin(profile?.role === "admin" && profile?.approved === true);
+      const staffRoles = ["admin", "editor", "reviewer"];
+      setIsStaff(
+        profile?.approved === true && staffRoles.includes(profile?.role)
+      );
       setLoading(false);
     }
 
@@ -408,7 +411,7 @@ export default function MainNav() {
 )}
 
 
-      {isLoggedIn && isAdmin && (
+      {isLoggedIn && isStaff && (
         <Link
           href="/admin"
           style={{

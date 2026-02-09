@@ -29,11 +29,13 @@ export default function AdminLayout({
         .eq("id", user.id)
         .maybeSingle();
 
+      const allowedRoles = ["admin", "editor", "reviewer"];
+
       if (
         error ||
         !profile ||
-        profile.role !== "admin" ||
-        profile.approved !== true
+        profile.approved !== true ||
+        !allowedRoles.includes(profile.role)
       ) {
         router.replace("/");
         return;

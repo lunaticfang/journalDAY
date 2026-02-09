@@ -1,11 +1,15 @@
 // pages/api/admin/upload-file.js
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { requireEditor } from "../../../lib/adminAuth";
 
 export default async function handler(req, res) {
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
   try {
+    const auth = await requireEditor(req, res);
+    if (!auth) return;
+
     const { fileName, contentBase64, contentType, title, published_at } =
       req.body;
 

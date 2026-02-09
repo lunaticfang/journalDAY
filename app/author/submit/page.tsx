@@ -197,57 +197,63 @@ export default function AuthorSubmitPage() {
   /* Render                                             */
   /* -------------------------------------------------- */
   return (
-    <main className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Submit Manuscript</h1>
+    <main className="portal-page portal-page--author">
+      <div className="portal-shell">
+        <header className="portal-header">
+          <div>
+            <h1 className="portal-title">Submit Manuscript</h1>
+          </div>
+        </header>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="portal-card portal-form">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Manuscript Title"
-          className="w-full border p-2 rounded"
+          className="portal-input"
         />
 
         <textarea
           value={abstract}
           onChange={(e) => setAbstract(e.target.value)}
           placeholder="Abstract"
-          className="w-full border p-2 rounded h-32"
+          className="portal-textarea"
         />
 
-        <div className="space-y-2 rounded border border-gray-200 p-3">
-          <div className="text-sm font-semibold">Lead Author</div>
+        <div className="portal-section">
+          <div className="portal-section__title">Lead Author</div>
           <input
             value={authorName}
             onChange={(e) => setAuthorName(e.target.value)}
             placeholder="Lead author full name"
-            className="w-full border p-2 rounded"
+            className="portal-input"
           />
-          <div className="text-sm text-gray-600">
+          <div className="portal-meta">
             Email: {userEmail || "Loading…"}
           </div>
         </div>
 
-        <div className="space-y-2 rounded border border-gray-200 p-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">Co-authors (optional)</div>
+        <div className="portal-section">
+          <div className="portal-row">
+            <div className="portal-section__title">Co-authors (optional)</div>
+            <span />
             <button
               type="button"
               onClick={() =>
                 setCoAuthors((prev) => [...prev, { name: "", email: "" }])
               }
-              className="text-xs font-semibold text-[#6A3291]"
+              className="portal-link"
             >
               + Add co-author
             </button>
           </div>
 
           {coAuthors.length === 0 && (
-            <div className="text-xs text-gray-500">No co-authors added.</div>
+            <div className="portal-empty">No co-authors added.</div>
           )}
 
           {coAuthors.map((author, index) => (
-            <div key={index} className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+            <div key={index} className="portal-row">
               <input
                 value={author.name}
                 onChange={(e) => {
@@ -257,7 +263,7 @@ export default function AuthorSubmitPage() {
                   );
                 }}
                 placeholder="Co-author name"
-                className="w-full border p-2 rounded"
+                className="portal-input"
               />
               <input
                 value={author.email}
@@ -268,14 +274,15 @@ export default function AuthorSubmitPage() {
                   );
                 }}
                 placeholder="Co-author email"
-                className="w-full border p-2 rounded"
+                className="portal-input"
               />
               <button
                 type="button"
                 onClick={() =>
                   setCoAuthors((prev) => prev.filter((_, i) => i !== index))
                 }
-                className="text-xs text-red-600"
+                className="portal-link"
+                style={{ color: "#b91c1c" }}
               >
                 Remove
               </button>
@@ -283,36 +290,41 @@ export default function AuthorSubmitPage() {
           ))}
         </div>
 
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={(e) =>
-            setFile((e.target as HTMLInputElement).files?.[0] ?? null)
-          }
-          className="w-full"
-        />
+        <div className="portal-file">
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) =>
+              setFile((e.target as HTMLInputElement).files?.[0] ?? null)
+            }
+          />
+        </div>
 
-        <input
-          type="file"
-          accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          onChange={(e) =>
-            setWordFile((e.target as HTMLInputElement).files?.[0] ?? null)
-          }
-          className="w-full"
-        />
+        <div className="portal-file">
+          <input
+            type="file"
+            accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(e) =>
+              setWordFile((e.target as HTMLInputElement).files?.[0] ?? null)
+            }
+          />
+        </div>
 
+        <div className="portal-actions">
         <button
           type="submit"
           disabled={loading}
-          className="px-4 py-2 rounded bg-[#6A3291] text-white font-medium disabled:opacity-60"
+          className="portal-btn portal-btn--primary"
         >
           {loading ? "Submitting…" : "Submit"}
         </button>
+        </div>
       </form>
 
       {status && (
-        <p className="mt-4 text-sm text-gray-700">{status}</p>
+        <p className={status.startsWith("Error") ? "portal-status portal-status--error" : "portal-status"}>{status}</p>
       )}
+      </div>
     </main>
   );
 }
@@ -412,7 +424,7 @@ export default function AuthorSubmitPage() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Manuscript Title"
-          className="w-full border p-2 rounded"
+          className="portal-input"
         />
 
         <textarea
@@ -440,7 +452,16 @@ export default function AuthorSubmitPage() {
       </form>
 
       {status && <p className="mt-4 text-sm">{status}</p>}
+      </div>
     </main>
   );
 }
 */
+
+
+
+
+
+
+
+

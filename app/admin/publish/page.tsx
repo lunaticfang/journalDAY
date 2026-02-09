@@ -60,7 +60,12 @@ export default function PublishIssuePage() {
         setLoading(true);
         setStatusMsg("");
 
-        const resp = await fetch("/api/admin/list-manuscripts");
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+
+        const resp = await fetch("/api/admin/list-manuscripts", {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
         const json = await resp.json();
 
         if (!resp.ok) {
@@ -80,6 +85,18 @@ export default function PublishIssuePage() {
       mounted = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    // Avoid useSearchParams() here to keep this page prerender-safe
+    const preselectId =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("select")
+        : null;
+    if (!preselectId) return;
+    setSelectedIds((prev) =>
+      prev.includes(preselectId) ? prev : [...prev, preselectId]
+    );
+  }, []);
 
   function toggleManuscript(id: string) {
     setSelectedIds((prev) =>
