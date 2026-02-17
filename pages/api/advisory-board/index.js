@@ -55,19 +55,16 @@ async function requireEditor(req, res) {
 
 async function getNextOrderIndex(section) {
   const { data, error } = await supabaseServer
-    .from("editorial_board")
+    .from("advisory_board")
     .select("order_index")
     .eq("section", section)
     .order("order_index", { ascending: false })
     .limit(1);
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 
-  const max = Array.isArray(data) && data[0]?.order_index
-    ? data[0].order_index
-    : 0;
+  const max =
+    Array.isArray(data) && data[0]?.order_index ? data[0].order_index : 0;
 
   return (max ?? 0) + 1;
 }
@@ -78,7 +75,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  // Enforce auth because this uses the service role key.
+  // Enforce auth because this endpoint uses the service role key.
   const auth = await requireEditor(req, res);
   if (!auth) return;
 
@@ -118,7 +115,7 @@ export default async function handler(req, res) {
 
       if (id) {
         const { data, error } = await supabaseServer
-          .from("editorial_board")
+          .from("advisory_board")
           .update(payload)
           .eq("id", id)
           .select();
@@ -126,23 +123,21 @@ export default async function handler(req, res) {
         if (error) throw error;
         const member = Array.isArray(data) ? data[0] : data;
         return res.status(200).json({ ok: true, member });
-      } else {
-        const finalOrder =
-          payload.order_index ?? (await getNextOrderIndex(section));
-
-        const { data, error } = await supabaseServer
-          .from("editorial_board")
-          .insert({
-            ...payload,
-            active: true,
-            order_index: finalOrder,
-          })
-          .select();
-
-        if (error) throw error;
-        const member = Array.isArray(data) ? data[0] : data;
-        return res.status(200).json({ ok: true, member });
       }
+
+      const finalOrder = payload.order_index ?? (await getNextOrderIndex(section));
+      const { data, error } = await supabaseServer
+        .from("advisory_board")
+        .insert({
+          ...payload,
+          active: true,
+          order_index: finalOrder,
+        })
+        .select();
+
+      if (error) throw error;
+      const member = Array.isArray(data) ? data[0] : data;
+      return res.status(200).json({ ok: true, member });
     }
 
     if (req.method === "DELETE") {
@@ -152,7 +147,7 @@ export default async function handler(req, res) {
       }
 
       const { error } = await supabaseServer
-        .from("editorial_board")
+        .from("advisory_board")
         .update({ active: false })
         .eq("id", id);
 
@@ -173,7 +168,7 @@ export default async function handler(req, res) {
         }
 
         const { error } = await supabaseServer
-          .from("editorial_board")
+          .from("advisory_board")
           .update({ section: to })
           .eq("section", from)
           .eq("active", true);
@@ -189,7 +184,7 @@ export default async function handler(req, res) {
         }
 
         const { error } = await supabaseServer
-          .from("editorial_board")
+          .from("advisory_board")
           .update({ active: false })
           .eq("section", target)
           .eq("active", true);

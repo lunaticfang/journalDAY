@@ -280,6 +280,86 @@ export default function EditorialBoardPage() {
     }
   };
 
+  const getAuthToken = async () => {
+    if (authToken) return authToken;
+    const { data: sessionData } = await supabase.auth.getSession();
+    return sessionData.session?.access_token ?? null;
+  };
+
+  const handleRenameSection = async (section: string) => {
+    const suggested = formatSectionLabel(section);
+    const raw = prompt("Rename this position/section:", suggested);
+    if (raw == null) return;
+
+    const newSection = raw.trim();
+    if (!newSection || newSection === section) return;
+
+    const token = await getAuthToken();
+    if (!token) {
+      alert("Please sign in again to rename positions.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/editorial-board", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "rename_section",
+          section,
+          newSection,
+        }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Rename failed");
+
+      setMembers((prev) =>
+        prev.map((m) => (m.section === section ? { ...m, section: newSection } : m))
+      );
+      cancelEdit();
+    } catch (err: any) {
+      console.error("Editorial board section rename error:", err);
+      alert("Rename failed: " + (err?.message || String(err)));
+    }
+  };
+
+  const handleDeleteSection = async (section: string) => {
+    if (!confirm(`Delete the "${formatSectionLabel(section)}" position?`)) return;
+
+    const token = await getAuthToken();
+    if (!token) {
+      alert("Please sign in again to delete positions.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/editorial-board", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "delete_section",
+          section,
+        }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Delete failed");
+
+      setMembers((prev) => prev.filter((m) => m.section !== section));
+      cancelEdit();
+    } catch (err: any) {
+      console.error("Editorial board section delete error:", err);
+      alert("Delete failed: " + (err?.message || String(err)));
+    }
+  };
+
   if (loading) {
     return <p style={{ padding: 40 }}>Loading editorial board…</p>;
   }
@@ -367,21 +447,53 @@ export default function EditorialBoardPage() {
             >
               <span>{label}</span>
               {isOwner && (
-                <button
-                  type="button"
-                  onClick={() => startCreate(key)}
-                  style={{
-                    border: "1px solid #6A3291",
-                    background: "white",
-                    color: "#6A3291",
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add member
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleRenameSection(key)}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      color: "#374151",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSection(key)}
+                    style={{
+                      border: "1px solid #fecaca",
+                      background: "#fff5f5",
+                      color: "#991b1b",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startCreate(key)}
+                    style={{
+                      border: "1px solid #6A3291",
+                      background: "white",
+                      color: "#6A3291",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Add member
+                  </button>
+                </div>
               )}
             </div>
 

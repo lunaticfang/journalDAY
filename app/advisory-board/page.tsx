@@ -32,11 +32,16 @@ export default function AdvisoryBoardPage() {
   const [creatingSection, setCreatingSection] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Member>>({});
   const [saving, setSaving] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [newSectionName, setNewSectionName] = useState("");
 
   useEffect(() => {
     (async () => {
       const { data: authData } = await supabase.auth.getUser();
       setIsOwner(authData?.user?.email === OWNER_EMAIL);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      setAuthToken(sessionData.session?.access_token ?? null);
 
       const { data, error } = await supabase
         .from("advisory_board")
@@ -53,6 +58,17 @@ export default function AdvisoryBoardPage() {
       setMembers((data as Member[]) ?? []);
       setLoading(false);
     })();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsOwner(session?.user?.email === OWNER_EMAIL);
+      setAuthToken(session?.access_token ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const grouped = useMemo(() => {
@@ -66,6 +82,20 @@ export default function AdvisoryBoardPage() {
     });
     return grouped;
   }, [members]);
+
+  const allSections = useMemo(() => {
+    const set = new Set<string>(Object.keys(SECTION_LABELS));
+    members.forEach((m) => set.add(m.section));
+    if (creatingSection) set.add(creatingSection);
+    return Array.from(set).filter(Boolean);
+  }, [members, creatingSection]);
+
+  const formatSectionLabel = (section: string) => {
+    if (SECTION_LABELS[section]) return SECTION_LABELS[section];
+    return section
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
 
   const normalizeOptional = (value?: string | null) => {
     const trimmed = (value ?? "").trim();
@@ -111,7 +141,7 @@ export default function AdvisoryBoardPage() {
     const name = (draft.name ?? "").trim();
     const section = (draft.section ?? "").trim();
 
-    if (!section || !SECTION_LABELS[section]) {
+    if (!section) {
       alert("Please select a valid section.");
       return;
     }
@@ -122,6 +152,15 @@ export default function AdvisoryBoardPage() {
     }
 
     setSaving(true);
+
+    const token =
+      authToken ||
+      (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) {
+      alert("Please sign in again to save changes.");
+      setSaving(false);
+      return;
+    }
 
     try {
       if (editingId) {
@@ -151,35 +190,24 @@ export default function AdvisoryBoardPage() {
           payload.order_index = getNextOrderIndex(section);
         }
 
-        const { data, error } = await supabase
-          .from("advisory_board")
-          .update(payload)
-          .eq("id", editingId)
-          .select();
+        const resp = await fetch("/api/advisory-board", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ id: editingId, ...payload }),
+        });
 
-        if (error) throw error;
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(json?.error || "Save failed");
 
-        const updated = Array.isArray(data)
-          ? (data[0] as Member | undefined)
-          : (data as Member | undefined);
-        if (updated) {
-          setMembers((prev) =>
-            prev.map((m) => (m.id === editingId ? { ...m, ...updated } : m))
-          );
-        } else {
-          setMembers((prev) =>
-            prev.map((m) =>
-              m.id === editingId
-                ? {
-                    ...m,
-                    ...payload,
-                    section,
-                    name,
-                  }
-                : m
-            )
-          );
-        }
+        const updated = json?.member as Member | undefined;
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === editingId ? { ...m, ...(updated ?? payload), id: m.id } : m
+          )
+        );
       } else if (creatingSection) {
         const payload = {
           section,
@@ -193,16 +221,19 @@ export default function AdvisoryBoardPage() {
           order_index: getNextOrderIndex(section),
         };
 
-        const { data, error } = await supabase
-          .from("advisory_board")
-          .insert(payload)
-          .select();
+        const resp = await fetch("/api/advisory-board", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
 
-        if (error) throw error;
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(json?.error || "Save failed");
 
-        const inserted = Array.isArray(data)
-          ? (data[0] as Member | undefined)
-          : (data as Member | undefined);
+        const inserted = json?.member as Member | undefined;
         if (inserted) {
           setMembers((prev) => [...prev, inserted]);
         }
@@ -219,18 +250,111 @@ export default function AdvisoryBoardPage() {
   const handleRemove = async (member: Member) => {
     if (!confirm(`Remove ${member.name} from the advisory board?`)) return;
 
-    try {
-      const { error } = await supabase
-        .from("advisory_board")
-        .update({ active: false })
-        .eq("id", member.id);
+    const token =
+      authToken ||
+      (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) {
+      alert("Please sign in again to remove members.");
+      return;
+    }
 
-      if (error) throw error;
+    try {
+      const resp = await fetch("/api/advisory-board", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: member.id }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Remove failed");
 
       setMembers((prev) => prev.filter((m) => m.id !== member.id));
     } catch (err: any) {
       console.error("Advisory board remove error:", err);
       alert("Remove failed: " + (err?.message || String(err)));
+    }
+  };
+
+  const getAuthToken = async () => {
+    if (authToken) return authToken;
+    const { data: sessionData } = await supabase.auth.getSession();
+    return sessionData.session?.access_token ?? null;
+  };
+
+  const handleRenameSection = async (section: string) => {
+    const suggested = formatSectionLabel(section);
+    const raw = prompt("Rename this position/section:", suggested);
+    if (raw == null) return;
+
+    const newSection = raw.trim();
+    if (!newSection || newSection === section) return;
+
+    const token = await getAuthToken();
+    if (!token) {
+      alert("Please sign in again to rename positions.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/advisory-board", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "rename_section",
+          section,
+          newSection,
+        }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Rename failed");
+
+      setMembers((prev) =>
+        prev.map((m) => (m.section === section ? { ...m, section: newSection } : m))
+      );
+      cancelEdit();
+    } catch (err: any) {
+      console.error("Advisory board section rename error:", err);
+      alert("Rename failed: " + (err?.message || String(err)));
+    }
+  };
+
+  const handleDeleteSection = async (section: string) => {
+    if (!confirm(`Delete the "${formatSectionLabel(section)}" position?`)) return;
+
+    const token = await getAuthToken();
+    if (!token) {
+      alert("Please sign in again to delete positions.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/advisory-board", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: "delete_section",
+          section,
+        }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Delete failed");
+
+      setMembers((prev) => prev.filter((m) => m.section !== section));
+      cancelEdit();
+    } catch (err: any) {
+      console.error("Advisory board section delete error:", err);
+      alert("Delete failed: " + (err?.message || String(err)));
     }
   };
 
@@ -244,7 +368,63 @@ export default function AdvisoryBoardPage() {
         Advisory Board
       </h1>
 
-      {Object.entries(SECTION_LABELS).map(([key, label]) => {
+      <datalist id="advisory-section-options">
+        {allSections.map((s) => (
+          <option key={s} value={s}>
+            {formatSectionLabel(s)}
+          </option>
+        ))}
+      </datalist>
+
+      {isOwner && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 20,
+            alignItems: "center",
+            background: "#f8f7fb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            padding: "10px 12px",
+          }}
+        >
+          <input
+            placeholder="New position / section (e.g., Research Advisors)"
+            value={newSectionName}
+            onChange={(e) => setNewSectionName(e.target.value)}
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "1px solid #d1d5db",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const name = newSectionName.trim();
+              if (!name) return;
+              startCreate(name);
+              setNewSectionName("");
+            }}
+            style={{
+              background: "#6A3291",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 12px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Add position
+          </button>
+        </div>
+      )}
+
+      {allSections.map((key) => {
+        const label = formatSectionLabel(key);
         const sectionMembers = grouped[key] ?? [];
         const showCreate = isOwner && creatingSection === key;
         if (!sectionMembers.length && !showCreate) return null;
@@ -265,21 +445,53 @@ export default function AdvisoryBoardPage() {
             >
               <span>{label}</span>
               {isOwner && (
-                <button
-                  type="button"
-                  onClick={() => startCreate(key)}
-                  style={{
-                    border: "1px solid #6A3291",
-                    background: "white",
-                    color: "#6A3291",
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  + Add member
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleRenameSection(key)}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      color: "#374151",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSection(key)}
+                    style={{
+                      border: "1px solid #fecaca",
+                      background: "#fff5f5",
+                      color: "#991b1b",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startCreate(key)}
+                    style={{
+                      border: "1px solid #6A3291",
+                      background: "white",
+                      color: "#6A3291",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Add member
+                  </button>
+                </div>
               )}
             </div>
 
@@ -309,7 +521,9 @@ export default function AdvisoryBoardPage() {
                     New member
                   </div>
 
-                  <select
+                  <input
+                    list="advisory-section-options"
+                    placeholder="Section / position"
                     value={draft.section ?? key}
                     onChange={(e) =>
                       setDraft((prev) => ({ ...prev, section: e.target.value }))
@@ -321,13 +535,7 @@ export default function AdvisoryBoardPage() {
                       borderRadius: 6,
                       border: "1px solid #e5e7eb",
                     }}
-                  >
-                    {Object.entries(SECTION_LABELS).map(([value, text]) => (
-                      <option key={value} value={value}>
-                        {text}
-                      </option>
-                    ))}
-                  </select>
+                  />
 
                   <input
                     placeholder="Name"
@@ -487,7 +695,9 @@ export default function AdvisoryBoardPage() {
                   </div>
                   {editingId === m.id ? (
                     <>
-                      <select
+                      <input
+                        list="advisory-section-options"
+                        placeholder="Section / position"
                         value={draft.section ?? m.section}
                         onChange={(e) =>
                           setDraft((prev) => ({
@@ -502,13 +712,7 @@ export default function AdvisoryBoardPage() {
                           borderRadius: 6,
                           border: "1px solid #e5e7eb",
                         }}
-                      >
-                        {Object.entries(SECTION_LABELS).map(([value, text]) => (
-                          <option key={value} value={value}>
-                            {text}
-                          </option>
-                        ))}
-                      </select>
+                      />
 
                       <input
                         placeholder="Name"
