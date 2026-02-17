@@ -23,6 +23,7 @@ type Article = {
   abstract: string | null;
   authors: string | null;
   pdf_path: string | null;  // unused for PDF, but fine to keep
+  manuscript_id?: string | null;
 };
 
 export default function IssuePage() {
@@ -41,11 +42,37 @@ export default function IssuePage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  function formatAuthors(raw: string | null) {
+    if (!raw) return "";
+    if (Array.isArray(raw)) return raw.join(", ");
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => {
+              if (!item) return "";
+              if (typeof item === "string") return item;
+              if (typeof item === "object") {
+                return item.name || item.email || "";
+              }
+              return "";
+            })
+            .filter(Boolean)
+            .join(", ");
+        }
+      } catch {
+        // fallthrough to return raw
+      }
+    }
+    return raw;
+  }
+
   // 🔹 same logic as admin's View PDF, but for articles
-  async function handleViewPdf(articleId: string) {
+  async function handleViewPdf(manuscriptId: string) {
     try {
       setErrorMsg("");
-      const resp = await fetch(`/api/submissions/${articleId}/signed-url`);
+      const resp = await fetch(`/api/submissions/${manuscriptId}/signed-url`);
       const json = await resp.json();
 
       if (!resp.ok) {
@@ -226,7 +253,9 @@ export default function IssuePage() {
                   {article.title}
                 </h2>
                 {article.authors && (
-                  <p className="text-xs text-gray-300">{article.authors}</p>
+                  <p className="text-xs text-gray-300">
+                    {formatAuthors(article.authors)}
+                  </p>
                 )}
                 <div className="mt-1 flex gap-3">
                   {/* View article detail page */}
@@ -239,7 +268,9 @@ export default function IssuePage() {
 
                   {/* View PDF using same signed-url logic as admin */}
                   <button
-                    onClick={() => handleViewPdf(article.id)}
+                    onClick={() =>
+                      handleViewPdf(article.manuscript_id || article.id)
+                    }
                     className="text-xs font-semibold text-emerald-400 hover:text-emerald-300"
                     type="button"
                   >

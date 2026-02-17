@@ -76,13 +76,23 @@ export default function AuthorDashboard() {
       setUploadingId(manuscriptId);
       setUploadMsg("");
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        router.replace("/author/submit");
+        return;
+      }
+
       const base64 = await fileToBase64(file);
 
       const resp = await fetch(
         `/api/submissions/${manuscriptId}/upload-revision`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
           body: JSON.stringify({
             fileName: file.name,
             contentBase64: base64,

@@ -1,5 +1,6 @@
 // pages/api/submissions/[id]/upload-revision.js
 import { supabaseServer } from "../../../../lib/supabaseServer";
+import { isOwner } from "../../../../lib/isOwner";
 
 const BUCKET = process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
 
@@ -11,6 +12,19 @@ export const config = {
     },
   },
 };
+
+function getBearerToken(req) {
+  const header = req.headers.authorization || "";
+  const [scheme, token] = header.split(" ");
+  if (scheme !== "Bearer" || !token) return null;
+  return token;
+}
+
+function isPdfLike(contentType, fileName) {
+  const type = (contentType || "").toLowerCase();
+  const name = (fileName || "").toLowerCase();
+  return type === "application/pdf" || name.endsWith(".pdf");
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -26,15 +40,73 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid manuscript id" });
     }
 
+    const token = getBearerToken(req);
+    if (!token) {
+      return res.status(401).json({ error: "Missing auth token" });
+    }
+
+    const { data: userData, error: authErr } =
+      await supabaseServer.auth.getUser(token);
+
+    if (authErr || !userData?.user) {
+      return res.status(401).json({ error: "Invalid auth token" });
+    }
+
+    const user = userData.user;
+
+    const { data: manuscript, error: mErr } = await supabaseServer
+      .from("manuscripts")
+      .select("id, author_id, submitter_id")
+      .eq("id", manuscriptId)
+      .maybeSingle();
+
+    if (mErr) throw mErr;
+    if (!manuscript) {
+      return res.status(404).json({ error: "Manuscript not found" });
+    }
+
+    let allowed = isOwner(user);
+    if (!allowed) {
+      const { data: profile, error: profileErr } = await supabaseServer
+        .from("profiles")
+        .select("role, approved")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const staffAllowed =
+        !profileErr &&
+        !!profile &&
+        profile.approved === true &&
+        ["admin", "editor"].includes(profile.role);
+
+      const ownsManuscript =
+        manuscript.author_id === user.id || manuscript.submitter_id === user.id;
+
+      allowed = staffAllowed || ownsManuscript;
+    }
+
+    if (!allowed) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
     const { fileName, contentBase64, contentType } = req.body || {};
     if (!fileName || !contentBase64) {
       return res.status(400).json({ error: "Missing file" });
     }
 
+    if (!isPdfLike(contentType, fileName)) {
+      return res.status(400).json({ error: "Only PDF revisions are allowed" });
+    }
+
     const cleanName = fileName.replace(/[^\w.\-]/g, "_");
     const filePath = `manuscripts/${manuscriptId}/${Date.now()}-${cleanName}`;
 
-    const buffer = Buffer.from(contentBase64, "base64");
+    const base64 =
+      typeof contentBase64 === "string" && contentBase64.includes("base64,")
+        ? contentBase64.split("base64,")[1]
+        : contentBase64;
+
+    const buffer = Buffer.from(base64, "base64");
 
     // Upload new version to storage
     const { error: uploadErr } = await supabaseServer.storage
@@ -59,10 +131,12 @@ export default async function handler(req, res) {
     if (verErr) throw verErr;
 
     // Set this as the current version on the manuscript
-    await supabaseServer
+    const { error: updateErr } = await supabaseServer
       .from("manuscripts")
       .update({ current_version: version.id })
       .eq("id", manuscriptId);
+
+    if (updateErr) throw updateErr;
 
     return res.status(200).json({
       ok: true,

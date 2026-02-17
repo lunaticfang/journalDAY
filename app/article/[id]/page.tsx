@@ -28,7 +28,19 @@ function formatAuthors(authors: string | null) {
   if (!authors) return "";
   try {
     const parsed = JSON.parse(authors);
-    if (Array.isArray(parsed)) return parsed.join(", ");
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => {
+          if (!item) return "";
+          if (typeof item === "string") return item;
+          if (typeof item === "object") {
+            return item.name || item.email || "";
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
   } catch {
     // authors might already be a plain string
   }

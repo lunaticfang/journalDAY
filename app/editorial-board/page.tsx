@@ -34,11 +34,16 @@ export default function EditorialBoardPage() {
   const [creatingSection, setCreatingSection] = useState<string | null>(null);
   const [draft, setDraft] = useState<Partial<Member>>({});
   const [saving, setSaving] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [newSectionName, setNewSectionName] = useState("");
 
   useEffect(() => {
     (async () => {
       const { data: authData } = await supabase.auth.getUser();
       setIsOwner(authData?.user?.email === OWNER_EMAIL);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      setAuthToken(sessionData.session?.access_token ?? null);
 
       const { data, error } = await supabase
         .from("editorial_board")
@@ -55,6 +60,17 @@ export default function EditorialBoardPage() {
       setMembers((data as Member[]) ?? []);
       setLoading(false);
     })();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsOwner(session?.user?.email === OWNER_EMAIL);
+      setAuthToken(session?.access_token ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const grouped = useMemo(() => {
@@ -68,6 +84,20 @@ export default function EditorialBoardPage() {
     });
     return grouped;
   }, [members]);
+
+  const allSections = useMemo(() => {
+    const set = new Set<string>(Object.keys(SECTION_LABELS));
+    members.forEach((m) => set.add(m.section));
+    if (creatingSection) set.add(creatingSection);
+    return Array.from(set).filter(Boolean);
+  }, [members, creatingSection]);
+
+  const formatSectionLabel = (section: string) => {
+    if (SECTION_LABELS[section]) return SECTION_LABELS[section];
+    return section
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  };
 
   const normalizeOptional = (value?: string | null) => {
     const trimmed = (value ?? "").trim();
@@ -113,7 +143,7 @@ export default function EditorialBoardPage() {
     const name = (draft.name ?? "").trim();
     const section = (draft.section ?? "").trim();
 
-    if (!section || !SECTION_LABELS[section]) {
+    if (!section) {
       alert("Please select a valid section.");
       return;
     }
@@ -124,6 +154,15 @@ export default function EditorialBoardPage() {
     }
 
     setSaving(true);
+
+    const token =
+      authToken ||
+      (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) {
+      alert("Please sign in again to save changes.");
+      setSaving(false);
+      return;
+    }
 
     try {
       if (editingId) {
@@ -153,33 +192,24 @@ export default function EditorialBoardPage() {
           payload.order_index = getNextOrderIndex(section);
         }
 
-        const { data, error } = await supabase
-          .from("editorial_board")
-          .update(payload)
-          .eq("id", editingId)
-          .select();
+        const resp = await fetch("/api/editorial-board", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ id: editingId, ...payload }),
+        });
 
-        if (error) throw error;
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(json?.error || "Save failed");
 
-        const updated = Array.isArray(data) ? (data[0] as Member | undefined) : (data as Member | undefined);
-        if (updated) {
-          setMembers((prev) =>
-            prev.map((m) => (m.id === editingId ? { ...m, ...updated } : m))
-          );
-        } else {
-          setMembers((prev) =>
-            prev.map((m) =>
-              m.id === editingId
-                ? {
-                    ...m,
-                    ...payload,
-                    section,
-                    name,
-                  }
-                : m
-            )
-          );
-        }
+        const updated = json?.member as Member | undefined;
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.id === editingId ? { ...m, ...(updated ?? payload), id: m.id } : m
+          )
+        );
       } else if (creatingSection) {
         const payload = {
           section,
@@ -193,14 +223,19 @@ export default function EditorialBoardPage() {
           order_index: getNextOrderIndex(section),
         };
 
-        const { data, error } = await supabase
-          .from("editorial_board")
-          .insert(payload)
-          .select();
+        const resp = await fetch("/api/editorial-board", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
 
-        if (error) throw error;
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(json?.error || "Save failed");
 
-        const inserted = Array.isArray(data) ? (data[0] as Member | undefined) : (data as Member | undefined);
+        const inserted = json?.member as Member | undefined;
         if (inserted) {
           setMembers((prev) => [...prev, inserted]);
         }
@@ -217,13 +252,26 @@ export default function EditorialBoardPage() {
   const handleRemove = async (member: Member) => {
     if (!confirm(`Remove ${member.name} from the editorial board?`)) return;
 
-    try {
-      const { error } = await supabase
-        .from("editorial_board")
-        .update({ active: false })
-        .eq("id", member.id);
+    const token =
+      authToken ||
+      (await supabase.auth.getSession()).data.session?.access_token;
+    if (!token) {
+      alert("Please sign in again to remove members.");
+      return;
+    }
 
-      if (error) throw error;
+    try {
+      const resp = await fetch("/api/editorial-board", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id: member.id }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(json?.error || "Remove failed");
 
       setMembers((prev) => prev.filter((m) => m.id !== member.id));
     } catch (err: any) {
@@ -242,7 +290,63 @@ export default function EditorialBoardPage() {
         Editorial Board
       </h1>
 
-      {Object.entries(SECTION_LABELS).map(([key, label]) => {
+      <datalist id="section-options">
+        {allSections.map((s) => (
+          <option key={s} value={s}>
+            {formatSectionLabel(s)}
+          </option>
+        ))}
+      </datalist>
+
+      {isOwner && (
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 20,
+            alignItems: "center",
+            background: "#f8f7fb",
+            border: "1px solid #e5e7eb",
+            borderRadius: 8,
+            padding: "10px 12px",
+          }}
+        >
+          <input
+            placeholder="New position / section (e.g., Guest Editors)"
+            value={newSectionName}
+            onChange={(e) => setNewSectionName(e.target.value)}
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "1px solid #d1d5db",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const name = newSectionName.trim();
+              if (!name) return;
+              startCreate(name);
+              setNewSectionName("");
+            }}
+            style={{
+              background: "#6A3291",
+              color: "white",
+              border: "none",
+              borderRadius: 6,
+              padding: "8px 12px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Add position
+          </button>
+        </div>
+      )}
+
+      {allSections.map((key) => {
+        const label = formatSectionLabel(key);
         const sectionMembers = grouped[key] ?? [];
         const showCreate = isOwner && creatingSection === key;
         if (!sectionMembers.length && !showCreate) return null;
@@ -307,7 +411,9 @@ export default function EditorialBoardPage() {
                     New member
                   </div>
 
-                  <select
+                  <input
+                    list="section-options"
+                    placeholder="Section / position"
                     value={draft.section ?? key}
                     onChange={(e) =>
                       setDraft((prev) => ({ ...prev, section: e.target.value }))
@@ -319,13 +425,7 @@ export default function EditorialBoardPage() {
                       borderRadius: 6,
                       border: "1px solid #e5e7eb",
                     }}
-                  >
-                    {Object.entries(SECTION_LABELS).map(([value, text]) => (
-                      <option key={value} value={value}>
-                        {text}
-                      </option>
-                    ))}
-                  </select>
+                  />
 
                   <input
                     placeholder="Name"
@@ -485,7 +585,9 @@ export default function EditorialBoardPage() {
                   </div>
                   {editingId === m.id ? (
                     <>
-                      <select
+                      <input
+                        list="section-options"
+                        placeholder="Section / position"
                         value={draft.section ?? m.section}
                         onChange={(e) =>
                           setDraft((prev) => ({
@@ -500,13 +602,7 @@ export default function EditorialBoardPage() {
                           borderRadius: 6,
                           border: "1px solid #e5e7eb",
                         }}
-                      >
-                        {Object.entries(SECTION_LABELS).map(([value, text]) => (
-                          <option key={value} value={value}>
-                            {text}
-                          </option>
-                        ))}
-                      </select>
+                      />
 
                       <input
                         placeholder="Name"
