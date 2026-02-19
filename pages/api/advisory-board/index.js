@@ -83,6 +83,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const {
         id,
+        create,
         section,
         name,
         degrees,
@@ -113,7 +114,7 @@ export default async function handler(req, res) {
         payload.order_index = order_index;
       }
 
-      if (id) {
+      if (id && !create) {
         const { data, error } = await supabaseServer
           .from("advisory_board")
           .update(payload)
@@ -126,13 +127,17 @@ export default async function handler(req, res) {
       }
 
       const finalOrder = payload.order_index ?? (await getNextOrderIndex(section));
+      const insertRow = {
+        ...payload,
+        active: true,
+        order_index: finalOrder,
+      };
+      if (id) {
+        insertRow.id = id;
+      }
       const { data, error } = await supabaseServer
         .from("advisory_board")
-        .insert({
-          ...payload,
-          active: true,
-          order_index: finalOrder,
-        })
+        .insert(insertRow)
         .select();
 
       if (error) throw error;

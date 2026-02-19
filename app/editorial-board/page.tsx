@@ -26,6 +26,15 @@ const SECTION_LABELS: Record<string, string> = {
   members: "Members",
 };
 
+const SECTION_ORDER_KEY = "editorial_board.section_order";
+
+function newTempId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export default function EditorialBoardPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +45,8 @@ export default function EditorialBoardPage() {
   const [saving, setSaving] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [newSectionName, setNewSectionName] = useState("");
+  const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
+  const [sectionOrder, setSectionOrder] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -58,6 +69,23 @@ export default function EditorialBoardPage() {
       }
 
       setMembers((data as Member[]) ?? []);
+
+      try {
+        const orderResp = await fetch("/api/site-content/get");
+        const orderJson = await orderResp.json().catch(() => ({}));
+        const rawOrder = orderJson?.[SECTION_ORDER_KEY];
+        if (typeof rawOrder === "string") {
+          const parsed = JSON.parse(rawOrder);
+          if (Array.isArray(parsed)) {
+            setSectionOrder(
+              parsed.filter((item): item is string => typeof item === "string")
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Load editorial board section order error:", err);
+      }
+
       setLoading(false);
     })();
 
@@ -85,12 +113,35 @@ export default function EditorialBoardPage() {
     return grouped;
   }, [members]);
 
-  const allSections = useMemo(() => {
+  const baseSections = useMemo(() => {
     const set = new Set<string>(Object.keys(SECTION_LABELS));
     members.forEach((m) => set.add(m.section));
     if (creatingSection) set.add(creatingSection);
     return Array.from(set).filter(Boolean);
   }, [members, creatingSection]);
+
+  const allSections = useMemo(() => {
+    if (!sectionOrder.length) return baseSections;
+
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    sectionOrder.forEach((s) => {
+      if (baseSections.includes(s) && !seen.has(s)) {
+        ordered.push(s);
+        seen.add(s);
+      }
+    });
+
+    baseSections.forEach((s) => {
+      if (!seen.has(s)) {
+        ordered.push(s);
+        seen.add(s);
+      }
+    });
+
+    return ordered;
+  }, [baseSections, sectionOrder]);
 
   const formatSectionLabel = (section: string) => {
     if (SECTION_LABELS[section]) return SECTION_LABELS[section];
@@ -111,9 +162,12 @@ export default function EditorialBoardPage() {
   };
 
   const startCreate = (section: string) => {
+    const createdId = newTempId();
     setCreatingSection(section);
+    setCreatingMemberId(createdId);
     setEditingId(null);
     setDraft({
+      id: createdId,
       section,
       name: "",
       degrees: "",
@@ -127,6 +181,7 @@ export default function EditorialBoardPage() {
   const cancelEdit = () => {
     setEditingId(null);
     setCreatingSection(null);
+    setCreatingMemberId(null);
     setDraft({});
   };
 
@@ -211,7 +266,13 @@ export default function EditorialBoardPage() {
           )
         );
       } else if (creatingSection) {
+        const newId =
+          creatingMemberId ||
+          (typeof draft.id === "string" ? draft.id : null) ||
+          newTempId();
         const payload = {
+          id: newId,
+          create: true,
           section,
           name,
           degrees: normalizeOptional(draft.degrees),
@@ -238,6 +299,17 @@ export default function EditorialBoardPage() {
         const inserted = json?.member as Member | undefined;
         if (inserted) {
           setMembers((prev) => [...prev, inserted]);
+          if (!sectionOrder.includes(section)) {
+            const next = [...allSections, section].filter(
+              (value, index, arr) => arr.indexOf(value) === index
+            );
+            setSectionOrder(next);
+            try {
+              await persistSectionOrder(next);
+            } catch (persistErr) {
+              console.error("Save editorial section order error:", persistErr);
+            }
+          }
         }
       }
       cancelEdit();
@@ -286,6 +358,48 @@ export default function EditorialBoardPage() {
     return sessionData.session?.access_token ?? null;
   };
 
+  const persistSectionOrder = async (nextOrder: string[]) => {
+    const token = await getAuthToken();
+    if (!token) {
+      throw new Error("Please sign in again to reorder positions.");
+    }
+
+    const resp = await fetch("/api/site-content/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        key: SECTION_ORDER_KEY,
+        value: JSON.stringify(nextOrder),
+      }),
+    });
+
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(json?.error || "Failed to save section order");
+    }
+  };
+
+  const handleMoveSection = async (section: string, delta: -1 | 1) => {
+    const current = [...allSections];
+    const index = current.indexOf(section);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= current.length) return;
+
+    const next = [...current];
+    [next[index], next[target]] = [next[target], next[index]];
+
+    setSectionOrder(next);
+    try {
+      await persistSectionOrder(next);
+    } catch (err: any) {
+      setSectionOrder(current);
+      alert(err?.message || "Failed to reorder positions");
+    }
+  };
+
   const handleRenameSection = async (section: string) => {
     const suggested = formatSectionLabel(section);
     const raw = prompt("Rename this position/section:", suggested);
@@ -316,6 +430,16 @@ export default function EditorialBoardPage() {
 
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Rename failed");
+
+      const nextOrder = allSections.map((value) =>
+        value === section ? newSection : value
+      );
+      setSectionOrder(nextOrder);
+      try {
+        await persistSectionOrder(nextOrder);
+      } catch (persistErr) {
+        console.error("Rename editorial section order error:", persistErr);
+      }
 
       setMembers((prev) =>
         prev.map((m) => (m.section === section ? { ...m, section: newSection } : m))
@@ -351,6 +475,14 @@ export default function EditorialBoardPage() {
 
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Delete failed");
+
+      const nextOrder = allSections.filter((value) => value !== section);
+      setSectionOrder(nextOrder);
+      try {
+        await persistSectionOrder(nextOrder);
+      } catch (persistErr) {
+        console.error("Delete editorial section order error:", persistErr);
+      }
 
       setMembers((prev) => prev.filter((m) => m.section !== section));
       cancelEdit();
@@ -428,6 +560,7 @@ export default function EditorialBoardPage() {
       {allSections.map((key) => {
         const label = formatSectionLabel(key);
         const sectionMembers = grouped[key] ?? [];
+        const sectionIndex = allSections.indexOf(key);
         const showCreate = isOwner && creatingSection === key;
         if (!sectionMembers.length && !showCreate) return null;
 
@@ -462,6 +595,43 @@ export default function EditorialBoardPage() {
                     }}
                   >
                     Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveSection(key, -1)}
+                    disabled={sectionIndex <= 0}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      color: "#374151",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: sectionIndex <= 0 ? "not-allowed" : "pointer",
+                      opacity: sectionIndex <= 0 ? 0.55 : 1,
+                    }}
+                  >
+                    Up
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveSection(key, 1)}
+                    disabled={sectionIndex >= allSections.length - 1}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      color: "#374151",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor:
+                        sectionIndex >= allSections.length - 1
+                          ? "not-allowed"
+                          : "pointer",
+                      opacity: sectionIndex >= allSections.length - 1 ? 0.55 : 1,
+                    }}
+                  >
+                    Down
                   </button>
                   <button
                     type="button"
@@ -522,6 +692,17 @@ export default function EditorialBoardPage() {
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>
                     New member
                   </div>
+
+                  {creatingMemberId && (
+                    <div style={{ marginBottom: 10 }}>
+                      <FileAttachment
+                        contentKey={`editorial_board.${creatingMemberId}.photo`}
+                        isEditor={isOwner}
+                        bucketName="editorial-photos"
+                        accept="image/*"
+                      />
+                    </div>
+                  )}
 
                   <input
                     list="section-options"
