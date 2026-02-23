@@ -47,6 +47,8 @@ export default function EditorialBoardPage() {
   const [newSectionName, setNewSectionName] = useState("");
   const [creatingMemberId, setCreatingMemberId] = useState<string | null>(null);
   const [sectionOrder, setSectionOrder] = useState<string[]>([]);
+  const [draggedSection, setDraggedSection] = useState<string | null>(null);
+  const [dropTargetSection, setDropTargetSection] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -113,35 +115,56 @@ export default function EditorialBoardPage() {
     return grouped;
   }, [members]);
 
-  const baseSections = useMemo(() => {
-    const set = new Set<string>(Object.keys(SECTION_LABELS));
-    members.forEach((m) => set.add(m.section));
-    if (creatingSection) set.add(creatingSection);
-    return Array.from(set).filter(Boolean);
-  }, [members, creatingSection]);
-
-  const allSections = useMemo(() => {
-    if (!sectionOrder.length) return baseSections;
-
+  const memberSections = useMemo(() => {
     const seen = new Set<string>();
     const ordered: string[] = [];
 
-    sectionOrder.forEach((s) => {
-      if (baseSections.includes(s) && !seen.has(s)) {
-        ordered.push(s);
-        seen.add(s);
-      }
-    });
-
-    baseSections.forEach((s) => {
-      if (!seen.has(s)) {
-        ordered.push(s);
-        seen.add(s);
-      }
+    members.forEach((m) => {
+      const section = String(m.section || "").trim();
+      if (!section || seen.has(section)) return;
+      seen.add(section);
+      ordered.push(section);
     });
 
     return ordered;
-  }, [baseSections, sectionOrder]);
+  }, [members]);
+
+  const allSections = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    const add = (value: string | null | undefined) => {
+      const section = String(value || "").trim();
+      if (!section || seen.has(section)) return;
+      seen.add(section);
+      ordered.push(section);
+    };
+
+    // Owner-defined order has top priority.
+    sectionOrder.forEach(add);
+    // Include existing DB sections that might not yet be in saved order.
+    memberSections.forEach(add);
+    // Keep active create target visible.
+    add(creatingSection);
+
+    return ordered;
+  }, [sectionOrder, memberSections, creatingSection]);
+
+  const sectionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+
+    const add = (value: string | null | undefined) => {
+      const section = String(value || "").trim();
+      if (!section || seen.has(section)) return;
+      seen.add(section);
+      ordered.push(section);
+    };
+
+    allSections.forEach(add);
+    Object.keys(SECTION_LABELS).forEach(add);
+    return ordered;
+  }, [allSections]);
 
   const formatSectionLabel = (section: string) => {
     if (SECTION_LABELS[section]) return SECTION_LABELS[section];
@@ -153,6 +176,12 @@ export default function EditorialBoardPage() {
   const normalizeOptional = (value?: string | null) => {
     const trimmed = (value ?? "").trim();
     return trimmed ? trimmed : null;
+  };
+
+  const findSectionByName = (value: string) => {
+    const target = value.trim().toLowerCase();
+    if (!target) return null;
+    return allSections.find((s) => s.toLowerCase() === target) ?? null;
   };
 
   const startEdit = (member: Member) => {
@@ -298,16 +327,36 @@ export default function EditorialBoardPage() {
 
         const inserted = json?.member as Member | undefined;
         if (inserted) {
+          if (inserted.id && inserted.id !== newId) {
+            try {
+              await movePendingPhotoAttachment(newId, inserted.id);
+            } catch (photoMoveErr) {
+              console.warn(
+                "Could not map uploaded photo to saved member id:",
+                photoMoveErr
+              );
+            }
+          }
           setMembers((prev) => [...prev, inserted]);
-          if (!sectionOrder.includes(section)) {
-            const next = [...allSections, section].filter(
-              (value, index, arr) => arr.indexOf(value) === index
-            );
+          const alreadyInOrder = sectionOrder.some(
+            (s) => s.toLowerCase() === section.toLowerCase()
+          );
+          if (!alreadyInOrder) {
+            const previousOrder = [...sectionOrder];
+            const seen = new Set<string>();
+            const next = [...allSections, section].filter((value) => {
+              const key = value.toLowerCase();
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
             setSectionOrder(next);
             try {
               await persistSectionOrder(next);
             } catch (persistErr) {
               console.error("Save editorial section order error:", persistErr);
+              setSectionOrder(previousOrder);
+              alert("Member saved, but section order could not be saved. Please retry.");
             }
           }
         }
@@ -358,6 +407,46 @@ export default function EditorialBoardPage() {
     return sessionData.session?.access_token ?? null;
   };
 
+  const movePendingPhotoAttachment = async (fromId: string, toId: string) => {
+    if (!fromId || !toId || fromId === toId) return;
+
+    const fromKey = `editorial_board.${fromId}.photo`;
+    const toKey = `editorial_board.${toId}.photo`;
+
+    const { data: sourceRow, error: sourceErr } = await supabase
+      .from("site_files")
+      .select("file_url, file_type")
+      .eq("content_key", fromKey)
+      .maybeSingle();
+
+    if (sourceErr || !sourceRow?.file_url) return;
+
+    const { error: upsertErr } = await supabase
+      .from("site_files")
+      .upsert(
+        {
+          content_key: toKey,
+          file_url: sourceRow.file_url,
+          file_type: sourceRow.file_type,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "content_key" }
+      );
+
+    if (upsertErr) {
+      throw upsertErr;
+    }
+
+    const { error: deleteErr } = await supabase
+      .from("site_files")
+      .delete()
+      .eq("content_key", fromKey);
+
+    if (deleteErr) {
+      console.warn("Could not remove temporary photo link:", deleteErr);
+    }
+  };
+
   const persistSectionOrder = async (nextOrder: string[]) => {
     const token = await getAuthToken();
     if (!token) {
@@ -382,22 +471,77 @@ export default function EditorialBoardPage() {
     }
   };
 
-  const handleMoveSection = async (section: string, delta: -1 | 1) => {
+  const moveSectionToIndex = async (section: string, targetIndex: number) => {
     const current = [...allSections];
     const index = current.indexOf(section);
-    const target = index + delta;
-    if (index < 0 || target < 0 || target >= current.length) return;
+    if (index < 0 || targetIndex < 0 || targetIndex >= current.length) return;
+    if (index === targetIndex) return;
 
     const next = [...current];
-    [next[index], next[target]] = [next[target], next[index]];
+    next.splice(index, 1);
+    next.splice(targetIndex, 0, section);
 
     setSectionOrder(next);
     try {
       await persistSectionOrder(next);
     } catch (err: any) {
       setSectionOrder(current);
+      throw err;
+    }
+  };
+
+  const handleMoveSection = async (section: string, delta: -1 | 1) => {
+    const index = allSections.indexOf(section);
+    const target = index + delta;
+    if (index < 0 || target < 0 || target >= allSections.length) return;
+
+    try {
+      await moveSectionToIndex(section, target);
+    } catch (err: any) {
       alert(err?.message || "Failed to reorder positions");
     }
+  };
+
+  const handleDropOnSection = async (targetSection: string) => {
+    if (!draggedSection) return;
+
+    const from = allSections.indexOf(draggedSection);
+    const to = allSections.indexOf(targetSection);
+
+    setDropTargetSection(null);
+    setDraggedSection(null);
+
+    if (from < 0 || to < 0 || from === to) return;
+
+    try {
+      await moveSectionToIndex(draggedSection, to);
+    } catch (err: any) {
+      alert(err?.message || "Failed to reorder positions");
+    }
+  };
+
+  const handleAddSection = async () => {
+    const raw = newSectionName.trim();
+    if (!raw) return;
+
+    const existing = findSectionByName(raw);
+    const section = existing ?? raw;
+
+    if (!existing) {
+      const current = [...allSections];
+      const next = [...current, section];
+      setSectionOrder(next);
+      try {
+        await persistSectionOrder(next);
+      } catch (err: any) {
+        setSectionOrder(current);
+        alert(err?.message || "Failed to create position");
+        return;
+      }
+    }
+
+    startCreate(section);
+    setNewSectionName("");
   };
 
   const handleRenameSection = async (section: string) => {
@@ -407,6 +551,12 @@ export default function EditorialBoardPage() {
 
     const newSection = raw.trim();
     if (!newSection || newSection === section) return;
+
+    const existing = findSectionByName(newSection);
+    if (existing && existing !== section) {
+      alert("A position with this name already exists.");
+      return;
+    }
 
     const token = await getAuthToken();
     if (!token) {
@@ -431,6 +581,7 @@ export default function EditorialBoardPage() {
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Rename failed");
 
+      const previousOrder = [...allSections];
       const nextOrder = allSections.map((value) =>
         value === section ? newSection : value
       );
@@ -439,6 +590,8 @@ export default function EditorialBoardPage() {
         await persistSectionOrder(nextOrder);
       } catch (persistErr) {
         console.error("Rename editorial section order error:", persistErr);
+        setSectionOrder(previousOrder);
+        alert("Section renamed, but order save failed. Please retry.");
       }
 
       setMembers((prev) =>
@@ -476,12 +629,15 @@ export default function EditorialBoardPage() {
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(json?.error || "Delete failed");
 
+      const previousOrder = [...allSections];
       const nextOrder = allSections.filter((value) => value !== section);
       setSectionOrder(nextOrder);
       try {
         await persistSectionOrder(nextOrder);
       } catch (persistErr) {
         console.error("Delete editorial section order error:", persistErr);
+        setSectionOrder(previousOrder);
+        alert("Section deleted, but order save failed. Please retry.");
       }
 
       setMembers((prev) => prev.filter((m) => m.section !== section));
@@ -503,7 +659,7 @@ export default function EditorialBoardPage() {
       </h1>
 
       <datalist id="section-options">
-        {allSections.map((s) => (
+        {sectionOptions.map((s) => (
           <option key={s} value={s}>
             {formatSectionLabel(s)}
           </option>
@@ -527,6 +683,12 @@ export default function EditorialBoardPage() {
             placeholder="New position / section (e.g., Guest Editors)"
             value={newSectionName}
             onChange={(e) => setNewSectionName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void handleAddSection();
+              }
+            }}
             style={{
               flex: 1,
               padding: "8px 10px",
@@ -536,19 +698,16 @@ export default function EditorialBoardPage() {
           />
           <button
             type="button"
-            onClick={() => {
-              const name = newSectionName.trim();
-              if (!name) return;
-              startCreate(name);
-              setNewSectionName("");
-            }}
+            onClick={handleAddSection}
+            disabled={!newSectionName.trim()}
             style={{
               background: "#6A3291",
               color: "white",
               border: "none",
               borderRadius: 6,
               padding: "8px 12px",
-              cursor: "pointer",
+              cursor: newSectionName.trim() ? "pointer" : "not-allowed",
+              opacity: newSectionName.trim() ? 1 : 0.6,
               whiteSpace: "nowrap",
             }}
           >
@@ -562,10 +721,33 @@ export default function EditorialBoardPage() {
         const sectionMembers = grouped[key] ?? [];
         const sectionIndex = allSections.indexOf(key);
         const showCreate = isOwner && creatingSection === key;
-        if (!sectionMembers.length && !showCreate) return null;
+        const createDraftId =
+          creatingMemberId || (typeof draft.id === "string" ? draft.id : null);
+        const isDropTarget = !!draggedSection && draggedSection !== key && dropTargetSection === key;
+        if (!sectionMembers.length && !showCreate && !isOwner) return null;
 
         return (
-          <section key={key} style={{ marginBottom: 32 }}>
+          <section
+            key={key}
+            style={{
+              marginBottom: 32,
+              borderRadius: 6,
+              outline: isDropTarget ? "2px dashed #6A3291" : "none",
+              outlineOffset: 2,
+            }}
+            onDragOver={(e) => {
+              if (!isOwner || !draggedSection) return;
+              e.preventDefault();
+              if (dropTargetSection !== key) {
+                setDropTargetSection(key);
+              }
+            }}
+            onDrop={(e) => {
+              if (!isOwner || !draggedSection) return;
+              e.preventDefault();
+              void handleDropOnSection(key);
+            }}
+          >
             <div
               style={{
                 background: "#eeeeee",
@@ -581,6 +763,30 @@ export default function EditorialBoardPage() {
               <span>{label}</span>
               {isOwner && (
                 <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={() => {
+                      setDraggedSection(key);
+                      setDropTargetSection(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedSection(null);
+                      setDropTargetSection(null);
+                    }}
+                    style={{
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      color: "#374151",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 12,
+                      cursor: "grab",
+                    }}
+                    title="Drag and drop to reorder sections"
+                  >
+                    Drag
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleRenameSection(key)}
@@ -693,10 +899,10 @@ export default function EditorialBoardPage() {
                     New member
                   </div>
 
-                  {creatingMemberId && (
+                  {createDraftId && (
                     <div style={{ marginBottom: 10 }}>
                       <FileAttachment
-                        contentKey={`editorial_board.${creatingMemberId}.photo`}
+                        contentKey={`editorial_board.${createDraftId}.photo`}
                         isEditor={isOwner}
                         bucketName="editorial-photos"
                         accept="image/*"

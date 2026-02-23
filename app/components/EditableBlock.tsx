@@ -71,6 +71,37 @@ function safePathPart(input: string) {
     .slice(0, 80);
 }
 
+function encodeUtf8Base64(input: string) {
+  try {
+    const bytes = new TextEncoder().encode(input);
+    let binary = "";
+    bytes.forEach((b) => {
+      binary += String.fromCharCode(b);
+    });
+    return btoa(binary);
+  } catch {
+    try {
+      return btoa(unescape(encodeURIComponent(input)));
+    } catch {
+      return "";
+    }
+  }
+}
+
+function decodeUtf8Base64(input: string) {
+  try {
+    const binary = atob(input);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    try {
+      return decodeURIComponent(escape(atob(input)));
+    } catch {
+      return "";
+    }
+  }
+}
+
 /* ---------------- Formatting extensions ---------------- */
 
 const TextStyle = Mark.create({
@@ -105,11 +136,87 @@ const TextStyle = Mark.create({
         renderHTML: (attrs) =>
           attrs.fontSize ? { style: `font-size: ${attrs.fontSize}` } : {},
       },
+      fontWeight: {
+        default: null,
+        parseHTML: (element) => element.style.fontWeight || null,
+        renderHTML: (attrs) =>
+          attrs.fontWeight ? { style: `font-weight: ${attrs.fontWeight}` } : {},
+      },
+      fontStyle: {
+        default: null,
+        parseHTML: (element) => element.style.fontStyle || null,
+        renderHTML: (attrs) =>
+          attrs.fontStyle ? { style: `font-style: ${attrs.fontStyle}` } : {},
+      },
+      textDecoration: {
+        default: null,
+        parseHTML: (element) => element.style.textDecoration || null,
+        renderHTML: (attrs) =>
+          attrs.textDecoration
+            ? { style: `text-decoration: ${attrs.textDecoration}` }
+            : {},
+      },
+      lineHeight: {
+        default: null,
+        parseHTML: (element) => element.style.lineHeight || null,
+        renderHTML: (attrs) =>
+          attrs.lineHeight ? { style: `line-height: ${attrs.lineHeight}` } : {},
+      },
+      letterSpacing: {
+        default: null,
+        parseHTML: (element) => element.style.letterSpacing || null,
+        renderHTML: (attrs) =>
+          attrs.letterSpacing
+            ? { style: `letter-spacing: ${attrs.letterSpacing}` }
+            : {},
+      },
     };
   },
 
   parseHTML() {
-    return [{ tag: "span" }];
+    return [
+      { tag: "span" },
+      { tag: "font" },
+      {
+        style: "color",
+        getAttrs: (value) => (value ? { color: String(value) } : {}),
+      },
+      {
+        style: "background-color",
+        getAttrs: (value) =>
+          value ? { backgroundColor: String(value) } : {},
+      },
+      {
+        style: "font-family",
+        getAttrs: (value) => (value ? { fontFamily: String(value) } : {}),
+      },
+      {
+        style: "font-size",
+        getAttrs: (value) => (value ? { fontSize: String(value) } : {}),
+      },
+      {
+        style: "font-weight",
+        getAttrs: (value) => (value ? { fontWeight: String(value) } : {}),
+      },
+      {
+        style: "font-style",
+        getAttrs: (value) => (value ? { fontStyle: String(value) } : {}),
+      },
+      {
+        style: "text-decoration",
+        getAttrs: (value) =>
+          value ? { textDecoration: String(value) } : {},
+      },
+      {
+        style: "line-height",
+        getAttrs: (value) => (value ? { lineHeight: String(value) } : {}),
+      },
+      {
+        style: "letter-spacing",
+        getAttrs: (value) =>
+          value ? { letterSpacing: String(value) } : {},
+      },
+    ];
   },
 
   renderHTML({ HTMLAttributes }) {
@@ -283,6 +390,43 @@ const Indent = Extension.create({
       indent: () => apply(1),
       outdent: () => apply(-1),
     };
+  },
+});
+
+const PreserveHtmlAttributes = Extension.create({
+  name: "preserveHtmlAttributes",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: [
+          "paragraph",
+          "heading",
+          "bulletList",
+          "orderedList",
+          "listItem",
+          "blockquote",
+          "table",
+          "tableRow",
+          "tableCell",
+          "tableHeader",
+          "image",
+          "attachment",
+        ],
+        attributes: {
+          class: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("class"),
+            renderHTML: (attrs) => (attrs.class ? { class: attrs.class } : {}),
+          },
+          style: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("style"),
+            renderHTML: (attrs) => (attrs.style ? { style: attrs.style } : {}),
+          },
+        },
+      },
+    ];
   },
 });
 
@@ -594,6 +738,64 @@ const ImageNode = Node.create({
   },
 });
 
+const RawHtmlBlock = Node.create({
+  name: "rawHtmlBlock",
+  group: "block",
+  atom: true,
+  selectable: true,
+  draggable: true,
+
+  addOptions() {
+    return {
+      HTMLAttributes: {
+        "data-raw-html-block": "true",
+      },
+    };
+  },
+
+  addAttributes() {
+    return {
+      html: {
+        default: "",
+        parseHTML: (element) => {
+          const encoded = element.getAttribute("data-raw-html");
+          if (encoded) return decodeUtf8Base64(encoded);
+
+          const template = element.querySelector(
+            "template[data-raw-html-template]"
+          );
+          if (template) return template.innerHTML || "";
+
+          return "";
+        },
+        renderHTML: (attrs) => {
+          const html = String(attrs.html || "");
+          return {
+            "data-raw-html": encodeUtf8Base64(html),
+          };
+        },
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-raw-html-block="true"]' }];
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const html = String((node.attrs as any).html || "");
+    return [
+      "div",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      ["template", { "data-raw-html-template": "true" }, html],
+    ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(RawHtmlBlockNodeView);
+  },
+});
+
 /* ---------------- Paste / drop upload handler ---------------- */
 
 const FileHandler = Extension.create({
@@ -602,6 +804,8 @@ const FileHandler = Extension.create({
   addOptions() {
     return {
       upload: null as UploadFn | null,
+      shouldPasteAsRawHtml: null as (() => boolean) | null,
+      consumeRawHtmlPasteMode: null as (() => void) | null,
     };
   },
 
@@ -638,18 +842,53 @@ const FileHandler = Extension.create({
           handlePaste: (_view, event) => {
             const e = event as ClipboardEvent;
             const files = Array.from(e.clipboardData?.files ?? []);
-            if (!files.length) return false;
+            if (files.length) {
+              const usable = files.filter(
+                (f) =>
+                  f.type.startsWith("image/") || f.type === "application/pdf"
+              );
+              if (!usable.length) return false;
 
-            const usable = files.filter(
-              (f) =>
-                f.type.startsWith("image/") || f.type === "application/pdf"
-            );
-            if (!usable.length) return false;
+              e.preventDefault();
+              void (async () => {
+                for (const f of usable) await uploadAndInsert(f);
+              })();
+
+              return true;
+            }
+
+            // Preserve Word/HTML paste fidelity as much as ProseMirror schema allows.
+            const html = e.clipboardData?.getData("text/html") || "";
+            if (!html.trim()) return false;
 
             e.preventDefault();
-            void (async () => {
-              for (const f of usable) await uploadAndInsert(f);
-            })();
+            if (this.options.shouldPasteAsRawHtml?.()) {
+              this.editor
+                .chain()
+                .focus()
+                .insertContent(
+                  {
+                    type: "rawHtmlBlock",
+                    attrs: { html },
+                  },
+                  {
+                    applyInputRules: false,
+                    applyPasteRules: false,
+                  }
+                )
+                .run();
+              this.options.consumeRawHtmlPasteMode?.();
+            } else {
+              this.editor
+                .chain()
+                .focus()
+                .insertContent(html, {
+                  parseOptions: { preserveWhitespace: "full" },
+                  applyInputRules: false,
+                  applyPasteRules: false,
+                })
+                .run();
+            }
 
             return true;
           },
@@ -1083,6 +1322,106 @@ function AttachmentNodeView(props: any) {
   );
 }
 
+function RawHtmlBlockNodeView(props: any) {
+  const { node, selected, updateAttributes, deleteNode, editor } = props;
+  const canEdit = Boolean(editor?.isEditable);
+  const html = String(node.attrs?.html || "");
+
+  const [showSource, setShowSource] = useState(false);
+  const [draftHtml, setDraftHtml] = useState(html);
+
+  useEffect(() => {
+    setDraftHtml(html);
+  }, [html]);
+
+  return (
+    <NodeViewWrapper
+      className={["jd-raw-html-block", selected ? "is-selected" : ""]
+        .filter(Boolean)
+        .join(" ")}
+      data-raw-html-block="true"
+    >
+      <div className="jd-raw-html-block__card" contentEditable={false}>
+        {canEdit && (
+          <div className="jd-raw-html-block__toolbar">
+            <span className="jd-pill">Raw HTML block</span>
+            <button
+              type="button"
+              className="jd-btn"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowSource((v) => !v);
+              }}
+              title="Edit raw HTML source"
+            >
+              {showSource ? "Hide source" : "Edit source"}
+            </button>
+            <button
+              type="button"
+              className="jd-btn jd-btn--danger"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                deleteNode();
+              }}
+              title="Remove raw HTML block"
+            >
+              Remove
+            </button>
+          </div>
+        )}
+
+        {showSource && canEdit && (
+          <div className="jd-raw-html-block__source-wrap">
+            <textarea
+              className="jd-raw-html-block__source"
+              value={draftHtml}
+              onChange={(e) => setDraftHtml(e.target.value)}
+              spellCheck={false}
+            />
+            <div className="jd-raw-html-block__actions">
+              <button
+                type="button"
+                className="jd-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  updateAttributes({ html: draftHtml });
+                  setShowSource(false);
+                }}
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                className="jd-btn"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDraftHtml(html);
+                  setShowSource(false);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div
+          className="jd-raw-html-block__preview"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </div>
+    </NodeViewWrapper>
+  );
+}
+
 export default function EditableBlock({
   contentKey,
   isEditor,
@@ -1096,11 +1435,13 @@ export default function EditableBlock({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkDraft, setLinkDraft] = useState("");
+  const [rawHtmlPasteMode, setRawHtmlPasteMode] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const settingContentRef = useRef(false);
   const saveRef = useRef<() => void>(() => {});
+  const rawHtmlPasteModeRef = useRef(false);
 
   const uploadToCmsMedia = useMemo<UploadFn>(() => {
     return async (file: File) => {
@@ -1147,6 +1488,7 @@ export default function EditableBlock({
       Subscript,
       TextAlign,
       Indent,
+      PreserveHtmlAttributes,
       Table,
       TableRow,
       TableHeader,
@@ -1154,7 +1496,15 @@ export default function EditableBlock({
       TablePlugins,
       AttachmentNode.configure({ upload: uploadToCmsMedia }),
       ImageNode.configure({ upload: uploadToCmsMedia }),
-      FileHandler.configure({ upload: uploadToCmsMedia }),
+      RawHtmlBlock,
+      FileHandler.configure({
+        upload: uploadToCmsMedia,
+        shouldPasteAsRawHtml: () => rawHtmlPasteModeRef.current,
+        consumeRawHtmlPasteMode: () => {
+          rawHtmlPasteModeRef.current = false;
+          setRawHtmlPasteMode(false);
+        },
+      }),
       Placeholder.configure({ placeholder }),
     ];
   }, [placeholder, uploadToCmsMedia]);
@@ -1198,6 +1548,10 @@ export default function EditableBlock({
     if (!editor) return;
     editor.setEditable(Boolean(isEditor));
   }, [editor, isEditor]);
+
+  useEffect(() => {
+    rawHtmlPasteModeRef.current = rawHtmlPasteMode;
+  }, [rawHtmlPasteMode]);
 
   /* helper: plain text -> paragraphs */
   function plainTextToParagraphs(text: string) {
@@ -1266,17 +1620,27 @@ export default function EditableBlock({
           settingContentRef.current = true;
 
           if (typeof parsed === "string") {
-            editor.commands.setContent(plainTextToParagraphs(parsed));
+            editor.commands.setContent(plainTextToParagraphs(parsed), {
+              parseOptions: { preserveWhitespace: "full" },
+            });
           } else if (parsed && typeof parsed === "object") {
             if (parsed.html) {
-              editor.commands.setContent(parsed.html);
+              editor.commands.setContent(parsed.html, {
+                parseOptions: { preserveWhitespace: "full" },
+              });
             } else if (parsed.text) {
-              editor.commands.setContent(`<p>${parsed.text}</p>`);
+              editor.commands.setContent(`<p>${parsed.text}</p>`, {
+                parseOptions: { preserveWhitespace: "full" },
+              });
             } else {
-              editor.commands.setContent(String(parsed));
+              editor.commands.setContent(String(parsed), {
+                parseOptions: { preserveWhitespace: "full" },
+              });
             }
           } else {
-            editor.commands.setContent(String(parsed));
+            editor.commands.setContent(String(parsed), {
+              parseOptions: { preserveWhitespace: "full" },
+            });
           }
 
           setDirty(false);
@@ -1803,6 +2167,20 @@ export default function EditableBlock({
 
             <button
               type="button"
+              className={["jd-btn", rawHtmlPasteMode ? "is-active" : ""].join(" ")}
+              onMouseDown={preventMouseDown}
+              onClick={() => {
+                const next = !rawHtmlPasteModeRef.current;
+                rawHtmlPasteModeRef.current = next;
+                setRawHtmlPasteMode(next);
+              }}
+              title="Next HTML paste will be stored as byte-preserving raw HTML block"
+            >
+              Raw Paste {rawHtmlPasteMode ? "On" : "Off"}
+            </button>
+
+            <button
+              type="button"
               className="jd-btn"
               onMouseDown={preventMouseDown}
               onClick={() => insertTable(3, 3, true)}
@@ -1960,13 +2338,15 @@ export default function EditableBlock({
 
           <div className="jd-toolbar__right">
             <div className="jd-status">
-              {saving
-                ? "Saving..."
-                : dirty
-                  ? "Unsaved changes"
-                  : savedAt
-                    ? `Saved ${new Date(savedAt).toLocaleTimeString()}`
-                    : "Up to date"}
+              {rawHtmlPasteMode
+                ? "Raw paste armed: next HTML paste keeps original source"
+                : saving
+                  ? "Saving..."
+                  : dirty
+                    ? "Unsaved changes"
+                    : savedAt
+                      ? `Saved ${new Date(savedAt).toLocaleTimeString()}`
+                      : "Up to date"}
             </div>
             <button
               type="button"

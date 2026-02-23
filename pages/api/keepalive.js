@@ -1,9 +1,12 @@
 import { supabaseServer } from "../../lib/supabaseServer";
 
-const CRON_SECRET = process.env.CRON_SECRET;
+const CRON_SECRET = process.env.CRON_SECRET || process.env.KEEPALIVE_SECRET;
 
 function hasValidSecret(req) {
-  const headerSecret = req.headers["x-cron-secret"];
+  const headerSecretRaw = req.headers["x-cron-secret"];
+  const headerSecret = Array.isArray(headerSecretRaw)
+    ? headerSecretRaw[0]
+    : headerSecretRaw;
   const querySecret = req.query?.secret;
 
   if (!CRON_SECRET) return false;
@@ -13,12 +16,15 @@ function hasValidSecret(req) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
+  if (req.method !== "GET" && req.method !== "HEAD") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
   if (!CRON_SECRET) {
-    return res.status(500).json({ ok: false, error: "CRON_SECRET is not configured" });
+    return res.status(500).json({
+      ok: false,
+      error: "CRON_SECRET/KEEPALIVE_SECRET is not configured",
+    });
   }
 
   if (!hasValidSecret(req)) {
@@ -26,19 +32,37 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Lightweight DB touch so Supabase sees activity.
-    const { error } = await supabaseServer
-      .from("issues")
-      .select("id", { head: true, count: "exact" })
-      .limit(1);
+    // Try a few lightweight reads so keepalive still succeeds even if one table changes.
+    const tablesToProbe = ["issues", "profiles", "site_content"];
+    let lastError = null;
+    let touchedTable = null;
 
-    if (error) {
-      return res.status(500).json({ ok: false, error: error.message });
+    for (const table of tablesToProbe) {
+      const { error } = await supabaseServer
+        .from(table)
+        .select("*", { head: true, count: "exact" })
+        .limit(1);
+
+      if (!error) {
+        touchedTable = table;
+        break;
+      }
+      lastError = error;
     }
 
-    return res.status(200).json({ ok: true, ts: new Date().toISOString() });
+    if (!touchedTable) {
+      return res.status(500).json({
+        ok: false,
+        error: lastError?.message || "No keepalive table probe succeeded",
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      table: touchedTable,
+      ts: new Date().toISOString(),
+    });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message || String(err) });
   }
 }
-
