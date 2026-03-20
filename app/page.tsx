@@ -1405,23 +1405,28 @@ export default function HomePage() {
         {!loading && issue && (
           <div className="home-issue__grid">
             <div className="home-issue__cover">
-              {coverSrc ? (
-                coverIsPdf ? (
-                  <object
-                    data={coverSrc}
-                    type="application/pdf"
-                    className="home-banner__pdf"
-                  >
-                    <a href={coverSrc} target="_blank" rel="noreferrer">
-                      View issue PDF
-                    </a>
-                  </object>
+              <Link
+                href={`/issues/${issue.id}`}
+                className="home-issue__cover-link"
+              >
+                {coverSrc ? (
+                  coverIsPdf ? (
+                    <object
+                      data={coverSrc}
+                      type="application/pdf"
+                      className="home-banner__pdf"
+                    >
+                      <a href={coverSrc} target="_blank" rel="noreferrer">
+                        View issue PDF
+                      </a>
+                    </object>
+                  ) : (
+                    <img src={coverSrc} alt="Issue cover" />
+                  )
                 ) : (
-                  <img src={coverSrc} alt="Issue cover" />
-                )
-              ) : (
-                <div className="home-muted">No cover yet.</div>
-              )}
+                  <div className="home-muted">No cover yet.</div>
+                )}
+              </Link>
 
               {isOwner && (
                 <FileAttachment
@@ -1437,6 +1442,15 @@ export default function HomePage() {
             </div>
 
             <div className="home-issue__content">
+              <div className="home-issue__actions">
+                <Link
+                  href={`/issues/${issue.id}`}
+                  className="home-btn home-btn--ghost"
+                >
+                  View Current Issue
+                </Link>
+              </div>
+
               {isOwner && (
                 <div className="home-issue__owner-stack">
                   <div className="home-issue__owner-tools">

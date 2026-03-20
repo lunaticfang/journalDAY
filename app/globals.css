@@ -836,10 +836,34 @@ body {
   box-shadow: 0 12px 26px rgba(17, 24, 39, 0.12);
 }
 
+.home-issue__cover-link {
+  display: block;
+  text-decoration: none;
+}
+
+.home-issue__cover-link img,
+.home-issue__cover-link .home-banner__pdf,
+.home-issue__cover-link .home-muted {
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.home-issue__cover-link:hover img,
+.home-issue__cover-link:hover .home-banner__pdf,
+.home-issue__cover-link:hover .home-muted {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(17, 24, 39, 0.16);
+}
+
 .home-issue__content {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.home-issue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .home-issue__owner-stack {
