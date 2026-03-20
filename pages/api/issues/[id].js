@@ -100,7 +100,7 @@ export default async function handler(req, res) {
     // 2) Load articles for that issue
     const { data: articles, error: artErr } = await supabaseServer
       .from("articles")
-      .select("id, title, abstract, authors, pdf_path")
+      .select("id, title, abstract, authors, pdf_path, manuscript_id, issue_id, created_at")
       .eq("issue_id", issueId)
       .order("created_at", { ascending: true });
 

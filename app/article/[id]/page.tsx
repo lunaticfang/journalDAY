@@ -9,9 +9,9 @@ type Article = {
   title: string | null;
   abstract: string | null;
   authors: string | null;
-  pdf_path: string | null; // legacy backup only
+  pdf_path: string | null;
   issue_id: string | null;
-  manuscript_id?: string | null; // 🔥 link to manuscripts table
+  manuscript_id?: string | null;
   created_at: string | null;
 };
 
@@ -21,11 +21,12 @@ type Issue = {
   volume: string | null;
   issue_number: number | null;
   published_at: string | null;
-  pdf_path?: string | null; // full issue PDF (not used as main source here)
+  pdf_path?: string | null;
 };
 
 function formatAuthors(authors: string | null) {
   if (!authors) return "";
+
   try {
     const parsed = JSON.parse(authors);
     if (Array.isArray(parsed)) {
@@ -42,9 +43,21 @@ function formatAuthors(authors: string | null) {
         .join(", ");
     }
   } catch {
-    // authors might already be a plain string
+    // authors may already be stored as plain text
   }
+
   return authors;
+}
+
+function buildIssueLabel(issue: Issue | null) {
+  if (!issue) return "";
+
+  return [
+    issue.volume ? `Vol. ${issue.volume}` : null,
+    issue.issue_number != null ? `Issue ${issue.issue_number}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
 }
 
 export default function ArticlePage() {
@@ -64,7 +77,7 @@ export default function ArticlePage() {
 
     (async () => {
       if (!articleId) {
-        setErrorMsg("Invalid article id");
+        setErrorMsg("Invalid article id.");
         setLoading(false);
         return;
       }
@@ -75,12 +88,13 @@ export default function ArticlePage() {
         setPdfError(null);
         setPdfUrl(null);
 
-        // 1) Load article + issue metadata
         const resp = await fetch(`/api/articles/${articleId}`);
-        const json = await resp.json();
+        const json = await resp.json().catch(() => ({}));
+
         if (!resp.ok) {
-          throw new Error(json?.error || "Failed to load article");
+          throw new Error(json?.error || "Failed to load article.");
         }
+
         if (cancelled) return;
 
         const loadedArticle = json.article as Article;
@@ -89,47 +103,53 @@ export default function ArticlePage() {
         setArticle(loadedArticle);
         setIssue(loadedIssue);
 
-        // 🎯 Use manuscript_id if available, otherwise fall back to article.id
-        const manuscriptId =
-          loadedArticle.manuscript_id || loadedArticle.id;
+        const manuscriptId = loadedArticle.manuscript_id || loadedArticle.id;
 
-        // 2) EXACT SAME LOGIC AS ADMIN "View PDF" but with manuscriptId
         try {
           const signedResp = await fetch(
             `/api/submissions/${manuscriptId}/signed-url`
           );
-          const signedJson = await signedResp.json();
+          const signedJson = await signedResp.json().catch(() => ({}));
 
           if (!signedResp.ok) {
-            throw new Error(signedJson?.error || "Could not get signed URL");
+            throw new Error(
+              signedJson?.error || "Could not get article PDF."
+            );
           }
+
           const url: string | null =
             signedJson?.signedUrl || signedJson?.publicUrl || null;
 
           if (!url) {
-            throw new Error("No signed URL returned");
+            throw new Error("No signed URL returned for this article.");
           }
 
           if (!cancelled) {
             setPdfUrl(url);
           }
-        } catch (err: any) {
+        } catch (err) {
           console.error("ArticlePage signed-url error:", err);
           if (!cancelled) {
-            setPdfError(err?.message || String(err));
+            setPdfError(
+              err instanceof Error ? err.message : "Could not load article PDF."
+            );
           }
         }
 
-        // 3) OPTIONAL BACKUP: if signed-url failed, but legacy article.pdf_path exists
-        if (!cancelled && !pdfUrl && loadedArticle.pdf_path) {
-          setPdfUrl(loadedArticle.pdf_path);
-          setPdfError(null);
+        if (!cancelled && loadedArticle.pdf_path) {
+          setPdfUrl((current) => current || loadedArticle.pdf_path);
         }
-      } catch (err: any) {
-        console.error(err);
-        if (!cancelled) setErrorMsg(err.message || String(err));
+      } catch (err) {
+        console.error("ArticlePage load error:", err);
+        if (!cancelled) {
+          setErrorMsg(
+            err instanceof Error ? err.message : "Could not load article."
+          );
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     })();
 
@@ -138,204 +158,205 @@ export default function ArticlePage() {
     };
   }, [articleId]);
 
+  const issueLabel = buildIssueLabel(issue);
+  const pubDate = issue?.published_at
+    ? new Date(issue.published_at).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "";
+  const formattedAuthors = formatAuthors(article?.authors || null);
+
   if (loading) {
     return (
-      <main style={{ maxWidth: 900, margin: "0 auto" }}>
-        <p>Loading article…</p>
+      <main className="reader-page">
+        <div className="reader-shell">
+          <div className="reader-state">Loading article...</div>
+        </div>
       </main>
     );
   }
 
   if (errorMsg || !article) {
     return (
-      <main style={{ maxWidth: 900, margin: "0 auto" }}>
-        <p style={{ color: "crimson" }}>{errorMsg || "Article not found."}</p>
-        <p style={{ marginTop: 8 }}>
-          <button
-            onClick={() => router.back()}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid #d1d5db",
-              background: "white",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            Go back
-          </button>
-        </p>
+      <main className="reader-page">
+        <div className="reader-shell">
+          <div className="reader-back">
+            <button
+              type="button"
+              className="reader-link-button"
+              onClick={() => router.back()}
+            >
+              Back
+            </button>
+            <Link href="/issues">Browse issues</Link>
+          </div>
+
+          <div className="reader-state reader-state--error">
+            {errorMsg || "Article not found."}
+          </div>
+        </div>
       </main>
     );
   }
 
-  const issueLabel = issue
-    ? [
-        issue.volume ? `Vol. ${issue.volume}` : null,
-        issue.issue_number != null ? `Issue ${issue.issue_number}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "";
-
-  const pubDate = issue?.published_at
-    ? new Date(issue.published_at).toLocaleDateString()
-    : "";
-
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto" }}>
-      <p style={{ marginBottom: 10 }}>
-        {issue && (
-          <>
-            <Link
-              href={`/issues/${issue.id}`}
-              style={{ fontSize: 14, textDecoration: "underline" }}
-            >
-              ← Back to issue
-            </Link>
-            {" · "}
-          </>
-        )}
-        <Link
-          href="/issues"
-          style={{ fontSize: 14, textDecoration: "underline" }}
-        >
-          Browse issues
-        </Link>
-      </p>
+    <main className="reader-page">
+      <div className="reader-shell">
+        <div className="reader-back">
+          {issue && <Link href={`/issues/${issue.id}`}>Back to issue</Link>}
+          <Link href="/issues">Browse issues</Link>
+        </div>
 
-      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 6 }}>
-        {article.title || "Untitled article"}
-      </h1>
+        <section className="reader-hero">
+          <div className="reader-eyebrow">Publication</div>
+          <h1>{article.title || "Untitled article"}</h1>
 
-      {article.authors && (
-        <p style={{ fontSize: 14, color: "#4b5563", marginBottom: 6 }}>
-          {formatAuthors(article.authors)}
-        </p>
-      )}
+          {formattedAuthors && (
+            <p className="reader-authors">{formattedAuthors}</p>
+          )}
 
-      {issue && (
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-          {issueLabel}
-          {issueLabel && pubDate ? " · " : ""}
-          {pubDate}
-        </p>
-      )}
-
-      {/* PDF viewer – driven by signed-url for THIS manuscript */}
-      {pdfUrl ? (
-        <section style={{ marginBottom: 24 }}>
-          <h2
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              marginBottom: 8,
-            }}
-          >
-            Full article
-          </h2>
-
-          <div
-            style={{
-              borderRadius: 12,
-              border: "1px solid #e5e7eb",
-              overflow: "hidden",
-              background: "#111827",
-            }}
-          >
-            <iframe
-              src={pdfUrl}
-              style={{
-                width: "100%",
-                height: "80vh",
-                border: "none",
-                background: "#111827",
-              }}
-              title={article.title || "Article PDF"}
-            />
+          <div className="reader-meta">
+            {issueLabel && <span>{issueLabel}</span>}
+            {pubDate && <span>{pubDate}</span>}
+            {article.created_at && (
+              <span>
+                Added{" "}
+                {new Date(article.created_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            )}
           </div>
 
-          <p style={{ marginTop: 8, fontSize: 13 }}>
-            If the PDF doesn’t display correctly,{" "}
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#2563eb", textDecoration: "underline" }}
-            >
-              open it in a new tab →
-            </a>
-          </p>
+          <div className="reader-actions">
+            {pdfUrl && (
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="reader-btn reader-btn--primary"
+              >
+                Open PDF
+              </a>
+            )}
+            {issue && (
+              <Link
+                href={`/issues/${issue.id}`}
+                className="reader-btn reader-btn--ghost"
+              >
+                View Publication
+              </Link>
+            )}
+            <Link href="/issues" className="reader-btn reader-btn--ghost">
+              Browse Archive
+            </Link>
+          </div>
         </section>
-      ) : (
-        <section style={{ marginBottom: 24 }}>
-          <h2
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              marginBottom: 4,
-            }}
-          >
-            Full article
-          </h2>
-          <p style={{ fontSize: 13, color: "#6b7280" }}>
-            PDF not available for this article.
-          </p>
-          {pdfError && (
-            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-              ({pdfError})
-            </p>
-          )}
-        </section>
-      )}
 
-      {article.abstract && (
-        <section style={{ marginBottom: 20 }}>
-          <h2
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              marginBottom: 4,
-            }}
-          >
-            Abstract
-          </h2>
-          <p
-            style={{
-              fontSize: 14,
-              lineHeight: 1.6,
-              color: "#111827",
-            }}
-          >
-            {article.abstract}
-          </p>
-        </section>
-      )}
+        <div className="reader-grid">
+          <section className="reader-panel reader-panel--wide">
+            <div className="reader-panel__head">
+              <div>
+                <h2>Full Article</h2>
+                <p>Read the publication inline or open it in a new tab.</p>
+              </div>
+            </div>
 
-      <section
-        style={{
-          borderTop: "1px solid #e5e7eb",
-          paddingTop: 14,
-          marginTop: 10,
-        }}
-      >
-        <h3
-          style={{
-            fontSize: 15,
-            fontWeight: 600,
-            marginBottom: 4,
-          }}
-        >
-          Suggested citation
-        </h3>
-        <p style={{ fontSize: 13, color: "#4b5563" }}>
-          {formatAuthors(article.authors)}
-          {formatAuthors(article.authors) ? ". " : ""}
-          {article.title || "Untitled article"}.{" "}
-          {issueLabel ? issueLabel + ". " : ""}
-          {pubDate}.
-        </p>
-      </section>
+            {pdfUrl ? (
+              <div className="reader-pdf-frame">
+                <iframe
+                  src={pdfUrl}
+                  title={article.title || "Article PDF"}
+                  className="reader-pdf-frame__iframe"
+                />
+              </div>
+            ) : (
+              <div className="reader-empty">
+                <p>PDF not available for this article.</p>
+                {pdfError && <span>{pdfError}</span>}
+                {issue?.pdf_path && (
+                  <a
+                    href={issue.pdf_path}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="reader-btn reader-btn--ghost"
+                  >
+                    Open full issue PDF
+                  </a>
+                )}
+              </div>
+            )}
+          </section>
+
+          <aside className="reader-sidebar">
+            {article.abstract && (
+              <section className="reader-panel">
+                <div className="reader-panel__head">
+                  <div>
+                    <h2>Abstract</h2>
+                    <p>Summary of the publication.</p>
+                  </div>
+                </div>
+                <div className="reader-copy">{article.abstract}</div>
+              </section>
+            )}
+
+            <section className="reader-panel">
+              <div className="reader-panel__head">
+                <div>
+                  <h2>Suggested Citation</h2>
+                  <p>Use this as a starting point for references.</p>
+                </div>
+              </div>
+              <div className="reader-citation">
+                {formattedAuthors}
+                {formattedAuthors ? ". " : ""}
+                {article.title || "Untitled article"}.
+                {issue?.title ? ` ${issue.title}.` : ""}
+                {issueLabel ? ` ${issueLabel}.` : ""}
+                {pubDate ? ` ${pubDate}.` : ""}
+              </div>
+            </section>
+
+            <section className="reader-panel">
+              <div className="reader-panel__head">
+                <div>
+                  <h2>Publication Details</h2>
+                  <p>Metadata for the issue and article.</p>
+                </div>
+              </div>
+              <dl className="reader-details">
+                <div>
+                  <dt>Article ID</dt>
+                  <dd>{article.id}</dd>
+                </div>
+                {article.manuscript_id && (
+                  <div>
+                    <dt>Manuscript ID</dt>
+                    <dd>{article.manuscript_id}</dd>
+                  </div>
+                )}
+                {issue?.title && (
+                  <div>
+                    <dt>Issue</dt>
+                    <dd>{issue.title}</dd>
+                  </div>
+                )}
+                {pubDate && (
+                  <div>
+                    <dt>Published</dt>
+                    <dd>{pubDate}</dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+          </aside>
+        </div>
+      </div>
     </main>
   );
 }

@@ -740,6 +740,7 @@ export default function HomePage() {
   const [attachQuery, setAttachQuery] = useState("");
   const [attachLoading, setAttachLoading] = useState(false);
   const [attachSavingId, setAttachSavingId] = useState<string | null>(null);
+  const [removeSavingId, setRemoveSavingId] = useState<string | null>(null);
   const [attachFeedback, setAttachFeedback] =
     useState<HomeIssueFeedback | null>(null);
 
@@ -1234,6 +1235,69 @@ export default function HomePage() {
     }
   };
 
+  const handleRemoveAttachedArticle = async (articleId: string) => {
+    if (!issue?.id) {
+      setAttachFeedback({
+        type: "error",
+        text: "No current issue is available.",
+      });
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        "Remove this article from the current issue? This deletes the publication row but keeps the manuscript."
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      setRemoveSavingId(articleId);
+      setAttachFeedback(null);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (!token) {
+        throw new Error("Please sign in again to manage current-issue articles.");
+      }
+
+      const resp = await fetch(
+        `/api/issues/${issue.id}/articles/${articleId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(json?.error || "Failed to remove the article.");
+      }
+
+      setArticles((prev) => prev.filter((article) => article.id !== articleId));
+      setAttachFeedback({
+        type: "success",
+        text: "Article removed from the current issue.",
+      });
+    } catch (err) {
+      console.error("Remove current-issue article failed:", err);
+      setAttachFeedback({
+        type: "error",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Could not remove the article from the issue.",
+      });
+    } finally {
+      setRemoveSavingId(null);
+    }
+  };
+
   const heroShowPdf = !bannerUrl && coverIsPdf && !!coverSrc;
   const heroImageSrc =
     bannerUrl || (!coverIsPdf ? coverSrc : null) || "/Website Banner.jpg";
@@ -1448,6 +1512,50 @@ export default function HomePage() {
                         </p>
                       )}
                     </div>
+
+                    {articles.length > 0 && (
+                      <div className="home-issue__attached-list">
+                        <div className="home-issue__attached-header">
+                          <h4>Attached Articles</h4>
+                          <span>{articles.length}</span>
+                        </div>
+
+                        <div className="home-issue__owner-list">
+                          {articles.map((article) => (
+                            <div
+                              key={article.id}
+                              className="home-issue__owner-chip"
+                            >
+                              <div>
+                                <strong>{article.title || "Untitled article"}</strong>
+                                {article.authors && <span>{article.authors}</span>}
+                              </div>
+
+                              <div className="home-issue__owner-chip-actions">
+                                <Link
+                                  href={`/article/${article.id}`}
+                                  className="home-issue__owner-link"
+                                >
+                                  View
+                                </Link>
+                                <button
+                                  type="button"
+                                  className="home-issue__owner-remove"
+                                  onClick={() => {
+                                    void handleRemoveAttachedArticle(article.id);
+                                  }}
+                                  disabled={removeSavingId === article.id}
+                                >
+                                  {removeSavingId === article.id
+                                    ? "Removing..."
+                                    : "Remove"}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="home-issue__owner-tools">
