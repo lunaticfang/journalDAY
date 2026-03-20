@@ -4,6 +4,8 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
+const OWNER_EMAIL = "updaytesjournal@gmail.com";
+
 export default function AdminLayout({
   children,
 }: {
@@ -12,14 +14,16 @@ export default function AdminLayout({
   const router = useRouter();
 
   useEffect(() => {
-    let mounted = true;
-
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
 
       if (!user) {
         router.replace("/admin/login");
+        return;
+      }
+
+      if (user.email === OWNER_EMAIL) {
         return;
       }
 
@@ -41,10 +45,6 @@ export default function AdminLayout({
         return;
       }
     })();
-
-    return () => {
-      mounted = false;
-    };
   }, [router]);
 
   return <>{children}</>;

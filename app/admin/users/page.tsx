@@ -1,379 +1,291 @@
-/*
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
-type Profile = {
-  id: string;
-  email: string;
-  is_admin: boolean;
-  approved_by: string | null;
-  approved_at: string | null;
-};
-
-export default function AdminUsersPage() {
-  const router = useRouter();
-
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  // --------------------------------------------------
-  // 1. Auth + admin guard
-  // --------------------------------------------------
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData?.session?.user;
-
-      if (!user) {
-        router.replace("/admin/login");
-        return;
-      }
-
-      const { data: me, error } = await supabase
-        .from("profiles")
-        .select("id, is_admin")
-        .eq("id", user.id)
-        .single();
-
-      if (error || !me?.is_admin) {
-        router.replace("/");
-        return;
-      }
-
-      if (mounted) {
-        setCurrentUserId(user.id);
-        await loadProfiles();
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [router]);
-
-  // --------------------------------------------------
-  // 2. Load all users
-  // --------------------------------------------------
-  async function loadProfiles() {
-    try {
-      setLoading(true);
-      setErrorMsg(null);
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, email, is_admin, approved_by, approved_at")
-        .order("email", { ascending: true });
-
-      if (error) throw error;
-
-      setProfiles(data || []);
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to load users");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // --------------------------------------------------
-  // 3. Promote / demote admin
-  // --------------------------------------------------
-  async function updateAdminStatus(
-    userId: string,
-    makeAdmin: boolean
-  ) {
-    if (!currentUserId) return;
-
-    try {
-      setUpdatingId(userId);
-      setErrorMsg(null);
-
-      const updates = makeAdmin
-        ? {
-            is_admin: true,
-            approved_by: currentUserId,
-            approved_at: new Date().toISOString(),
-          }
-        : {
-            is_admin: false,
-            approved_by: null,
-            approved_at: null,
-          };
-
-      const { error } = await supabase
-        .from("profiles")
-        .update(updates)
-        .eq("id", userId);
-
-      if (error) throw error;
-
-      await loadProfiles();
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to update admin status");
-    } finally {
-      setUpdatingId(null);
-    }
-  }
-
-  // --------------------------------------------------
-  // 4. Render
-  // --------------------------------------------------
-  return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 6 }}>
-        Manage Administrators
-      </h1>
-      <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
-        Admins can promote or remove other admins. You cannot remove yourself.
-      </p>
-
-      {errorMsg && (
-        <p style={{ color: "crimson", marginBottom: 12 }}>
-          {errorMsg}
-        </p>
-      )}
-
-      {loading ? (
-        <p>Loading users…</p>
-      ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: 14,
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={thStyle}>Email</th>
-              <th style={thStyle}>Role</th>
-              <th style={thStyle}>Approved By</th>
-              <th style={thStyle}>Approved At</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {profiles.map((p) => {
-              const isSelf = p.id === currentUserId;
-              const isUpdating = updatingId === p.id;
-
-              return (
-                <tr key={p.id}>
-                  <td style={tdStyle}>{p.email}</td>
-                  <td style={tdStyle}>
-                    {p.is_admin ? "Admin" : "User"}
-                  </td>
-                  <td style={tdStyle}>{p.approved_by ?? "-"}</td>
-                  <td style={tdStyle}>
-                    {p.approved_at
-                      ? new Date(p.approved_at).toLocaleString()
-                      : "-"}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {p.is_admin ? (
-                      <button
-                        disabled={isSelf || isUpdating}
-                        onClick={() => updateAdminStatus(p.id, false)}
-                        style={dangerBtn(isSelf || isUpdating)}
-                        title={
-                          isSelf
-                            ? "You cannot remove yourself"
-                            : "Remove admin access"
-                        }
-                      >
-                        Remove Admin
-                      </button>
-                    ) : (
-                      <button
-                        disabled={isUpdating}
-                        onClick={() => updateAdminStatus(p.id, true)}
-                        style={primaryBtn(isUpdating)}
-                      >
-                        Make Admin
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </main>
-  );
-}
-
-// --------------------------------------------------
-// Styles
-// --------------------------------------------------
-const thStyle: React.CSSProperties = {
-  borderBottom: "1px solid #e5e7eb",
-  padding: 8,
-  textAlign: "left",
-  fontWeight: 600,
-};
-
-const tdStyle: React.CSSProperties = {
-  borderBottom: "1px solid #f3f4f6",
-  padding: 8,
-};
-
-const primaryBtn = (disabled: boolean): React.CSSProperties => ({
-  padding: "6px 10px",
-  borderRadius: 6,
-  border: "none",
-  background: disabled ? "#9ca3af" : "#6A3291",
-  color: "white",
-  cursor: disabled ? "default" : "pointer",
-  fontSize: 13,
-});
-
-const dangerBtn = (disabled: boolean): React.CSSProperties => ({
-  padding: "6px 10px",
-  borderRadius: 6,
-  border: "none",
-  background: disabled ? "#9ca3af" : "#dc2626",
-  color: "white",
-  cursor: disabled ? "default" : "pointer",
-  fontSize: 13,
-});
-*/
-
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
+const OWNER_EMAIL = "updaytesjournal@gmail.com";
 
 type UserRow = {
   id: string;
-  email: string;
-  role: "admin" | "author";
-  approved: boolean;
+  email: string | null;
+  role: string;
+  approved: boolean | null;
 };
 
-const SUPER_ADMIN_EMAIL = "admin@updaytes.org"; // bootstrap admin
+type ListResponse = {
+  users?: UserRow[];
+  actor?: {
+    id: string;
+    email: string | null;
+    isOwner: boolean;
+  };
+  error?: string;
+};
 
 export default function AdminUsersPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
-  const [error, setError] = useState<string>("");
+  const [error, setError] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteStatus, setInviteStatus] = useState("");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [actorIsOwner, setActorIsOwner] = useState(false);
 
-  /* ------------------------------------------------------------ */
-  /* Auth + permission guard                                      */
-  /* ------------------------------------------------------------ */
+  const loadUsers = async (
+    activeToken: string,
+    fallbackId?: string | null,
+    fallbackEmail?: string | null
+  ) => {
+    setError("");
+
+    const resp = await fetch("/api/admin/users/list", {
+      headers: {
+        Authorization: `Bearer ${activeToken}`,
+      },
+    });
+
+    const json = (await resp.json().catch(() => ({}))) as ListResponse;
+
+    if (resp.status === 401) {
+      router.replace("/admin/login");
+      return;
+    }
+
+    if (resp.status === 403) {
+      router.replace("/");
+      return;
+    }
+
+    if (!resp.ok) {
+      setError(json?.error || "Failed to load users.");
+      return;
+    }
+
+    setUsers(json.users || []);
+    setCurrentUserId(json.actor?.id ?? fallbackId ?? null);
+    setCurrentUserEmail(json.actor?.email ?? fallbackEmail ?? null);
+    setActorIsOwner(Boolean(json.actor?.isOwner));
+  };
+
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
+      const session = sessionData.session;
+      const user = session?.user;
 
       if (!user) {
         router.replace("/admin/login");
         return;
       }
 
-      setCurrentUserEmail(user.email ?? null);
-
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("role, approved")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (
-        error ||
-        !profile ||
-        profile.role !== "admin" ||
-        profile.approved !== true
-      ) {
-        router.replace("/");
+      const accessToken = session.access_token ?? null;
+      if (!accessToken) {
+        router.replace("/admin/login");
         return;
       }
 
-      if (mounted) {
-        await loadUsers();
+      if (cancelled) return;
+
+      setToken(accessToken);
+      await loadUsers(accessToken, user.id, user.email ?? null);
+      if (!cancelled) {
         setLoading(false);
       }
     })();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, [router]);
 
-  /* ------------------------------------------------------------ */
-  /* Load all users                                               */
-  /* ------------------------------------------------------------ */
-  async function loadUsers() {
-    setError("");
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, email, role, approved")
-      .order("email", { ascending: true });
-
-    if (error) {
-      setError(error.message);
+  const runAction = async (action: "promote" | "demote", userId: string) => {
+    if (!token) {
+      setError("Please sign in again.");
       return;
     }
 
-    setUsers((data || []) as UserRow[]);
-  }
+    setBusyId(userId);
+    setError("");
 
-  /* ------------------------------------------------------------ */
-  /* Actions                                                      */
-  /* ------------------------------------------------------------ */
-  async function approveAdmin(userId: string) {
-    await supabase
-      .from("profiles")
-      .update({ role: "admin", approved: true })
-      .eq("id", userId);
+    try {
+      const resp = await fetch(`/api/admin/users/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ userId }),
+      });
 
-    loadUsers();
-  }
+      const json = (await resp.json().catch(() => ({}))) as { error?: string };
 
-  async function revokeAdmin(userId: string) {
-    await supabase
-      .from("profiles")
-      .update({ role: "author", approved: false })
-      .eq("id", userId);
+      if (resp.status === 401) {
+        router.replace("/admin/login");
+        return;
+      }
 
-    loadUsers();
-  }
+      if (resp.status === 403) {
+        router.replace("/");
+        return;
+      }
 
-  /* ------------------------------------------------------------ */
-  /* Render                                                       */
-  /* ------------------------------------------------------------ */
+      if (!resp.ok) {
+        setError(json.error || "Action failed.");
+        return;
+      }
+
+      await loadUsers(token, currentUserId, currentUserEmail);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const sendInvite = async () => {
+    if (!token) {
+      setError("Please sign in again.");
+      return;
+    }
+
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      setError("Enter an email to invite.");
+      return;
+    }
+
+    setInviting(true);
+    setInviteStatus("");
+    setError("");
+
+    try {
+      const resp = await fetch("/api/admin/users/invite", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const json = (await resp.json().catch(() => ({}))) as {
+        error?: string;
+        already_admin?: boolean;
+      };
+
+      if (resp.status === 401) {
+        router.replace("/admin/login");
+        return;
+      }
+
+      if (resp.status === 403) {
+        router.replace("/");
+        return;
+      }
+
+      if (!resp.ok) {
+        setError(json?.error || "Failed to send invite.");
+        return;
+      }
+
+      if (json.already_admin) {
+        setInviteStatus("This user is already an approved admin.");
+      } else {
+        setInviteStatus(
+          "Invite sent. They must approve it from email before receiving the password setup mail."
+        );
+      }
+      setInviteEmail("");
+    } finally {
+      setInviting(false);
+    }
+  };
+
   if (loading) {
-    return <p>Loading admin users…</p>;
+    return <p style={{ padding: 20 }}>Loading admin users...</p>;
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 16 }}>
+    <main style={{ maxWidth: 980, margin: "40px auto", padding: "0 20px" }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
         Admin Management
       </h1>
 
-      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
-        Approved admins can approve other admins. The super admin cannot be
-        removed.
+      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+        Admin status can be sanctioned by the owner or any existing approved admin.
       </p>
 
+      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
+        Signed in as:{" "}
+        <strong>{currentUserEmail || "Unknown user"}</strong>
+        {actorIsOwner ? " (Owner)" : " (Admin)"}
+      </p>
+
+      <div
+        style={{
+          marginBottom: 18,
+          border: "1px solid #e5e7eb",
+          borderRadius: 8,
+          background: "#f8f7fb",
+          padding: 12,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+          Invite New Admin
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            type="email"
+            placeholder="admin@email.com"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void sendInvite();
+              }
+            }}
+            style={{
+              flex: 1,
+              minWidth: 260,
+              padding: "8px 10px",
+              borderRadius: 6,
+              border: "1px solid #d1d5db",
+            }}
+          />
+          <button
+            type="button"
+            onClick={sendInvite}
+            disabled={inviting || !inviteEmail.trim()}
+            style={{
+              ...btn,
+              background: "#6A3291",
+              border: "1px solid #6A3291",
+              color: "white",
+              cursor: inviting || !inviteEmail.trim() ? "not-allowed" : "pointer",
+              opacity: inviting || !inviteEmail.trim() ? 0.6 : 1,
+            }}
+          >
+            {inviting ? "Sending..." : "Send Invite"}
+          </button>
+        </div>
+
+        {inviteStatus && (
+          <p style={{ marginTop: 8, fontSize: 12, color: "#065f46" }}>{inviteStatus}</p>
+        )}
+      </div>
+
       {error && (
-        <p style={{ color: "crimson", marginBottom: 12 }}>
-          Error: {error}
+        <p style={{ marginBottom: 12, color: "crimson", fontSize: 13 }}>
+          {error}
         </p>
       )}
 
@@ -383,44 +295,59 @@ export default function AdminUsersPage() {
             <th style={th}>Email</th>
             <th style={th}>Role</th>
             <th style={th}>Approved</th>
-            <th style={th}>Actions</th>
+            <th style={th}>Action</th>
           </tr>
         </thead>
-
         <tbody>
           {users.map((u) => {
-            const isSuperAdmin = u.email === SUPER_ADMIN_EMAIL;
-            const isCurrentSuperAdmin =
-              currentUserEmail === SUPER_ADMIN_EMAIL;
+            const email = u.email || "(no email)";
+            const isOwnerUser =
+              typeof u.email === "string" &&
+              u.email.toLowerCase() === OWNER_EMAIL.toLowerCase();
+            const isSelf = u.id === currentUserId;
+            const isBusy = busyId === u.id;
+            const isAdmin = u.role === "admin" && u.approved === true;
 
             return (
               <tr key={u.id}>
-                <td style={td}>{u.email}</td>
+                <td style={td}>{email}</td>
                 <td style={td}>{u.role}</td>
                 <td style={td}>{u.approved ? "Yes" : "No"}</td>
                 <td style={td}>
-                  {u.role === "author" && (
-                    <button
-                      onClick={() => approveAdmin(u.id)}
-                      style={btn}
-                    >
-                      Approve as Admin
-                    </button>
-                  )}
-
-                  {u.role === "admin" && !isSuperAdmin && isCurrentSuperAdmin && (
-                    <button
-                      onClick={() => revokeAdmin(u.id)}
-                      style={{ ...btn, background: "#fee2e2" }}
-                    >
-                      Revoke Admin
-                    </button>
-                  )}
-
-                  {isSuperAdmin && (
+                  {isOwnerUser ? (
                     <span style={{ fontSize: 12, color: "#6b7280" }}>
-                      Super Admin
+                      Owner (protected)
                     </span>
+                  ) : isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => runAction("demote", u.id)}
+                      disabled={isBusy || isSelf}
+                      style={{
+                        ...btn,
+                        background: "#fee2e2",
+                        border: "1px solid #fecaca",
+                        color: "#991b1b",
+                        cursor: isBusy || isSelf ? "not-allowed" : "pointer",
+                        opacity: isBusy || isSelf ? 0.6 : 1,
+                      }}
+                      title={isSelf ? "You cannot revoke yourself" : "Revoke admin"}
+                    >
+                      {isBusy ? "Working..." : "Revoke Admin"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => runAction("promote", u.id)}
+                      disabled={isBusy}
+                      style={{
+                        ...btn,
+                        cursor: isBusy ? "not-allowed" : "pointer",
+                        opacity: isBusy ? 0.6 : 1,
+                      }}
+                    >
+                      {isBusy ? "Working..." : "Approve as Admin"}
+                    </button>
                   )}
                 </td>
               </tr>
@@ -432,13 +359,11 @@ export default function AdminUsersPage() {
   );
 }
 
-/* ------------------------------------------------------------ */
-/* Styles                                                       */
-/* ------------------------------------------------------------ */
 const th: React.CSSProperties = {
   textAlign: "left",
   borderBottom: "1px solid #e5e7eb",
   padding: 8,
+  fontWeight: 600,
 };
 
 const td: React.CSSProperties = {
@@ -447,10 +372,10 @@ const td: React.CSSProperties = {
 };
 
 const btn: React.CSSProperties = {
-  padding: "4px 8px",
-  borderRadius: 4,
+  padding: "6px 10px",
+  borderRadius: 6,
   border: "1px solid #d1d5db",
-  background: "#e5e7eb",
-  cursor: "pointer",
+  background: "#eef2ff",
+  color: "#312e81",
   fontSize: 12,
 };

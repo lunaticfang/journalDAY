@@ -1,0 +1,115 @@
+import type { NextApiRequest, NextApiResponse } from "next";
+import { supabaseServer } from "../../../../lib/supabaseServer";
+import { requireRole } from "../../../../lib/adminAuth";
+import {
+  createInviteToken,
+  getAppBaseUrl,
+  getInviteSecret,
+  getInviteTtlHours,
+} from "../../../../lib/adminInviteToken";
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM = process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+async function sendInviteEmail(recipient: string, approveUrl: string, inviterEmail: string | null) {
+  if (!RESEND_API_KEY) {
+    throw new Error("Missing RESEND_API_KEY");
+  }
+
+  const subject = "UpDAYtes Admin Invite - Confirm Access";
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
+      <h2 style="color: #6A3291; margin-bottom: 12px;">Admin Invitation</h2>
+      <p>You were invited to become an administrator at UpDAYtes.</p>
+      <p><strong>Invited by:</strong> ${inviterEmail || "UpDAYtes Owner/Admin"}</p>
+      <p>To continue, confirm this invitation:</p>
+      <p style="margin: 16px 0;">
+        <a href="${approveUrl}" style="background:#6A3291;color:white;padding:10px 14px;border-radius:6px;text-decoration:none;">
+          Approve Admin Invitation
+        </a>
+      </p>
+      <p>This link expires in 7 days.</p>
+      <p style="margin-top: 18px;">If you did not expect this invite, ignore this email.</p>
+    </div>
+  `;
+
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: RESEND_FROM,
+      to: [recipient],
+      subject,
+      html,
+    }),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text || "Failed to send invite email");
+  }
+}
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    const auth = await requireRole(req, res, ["admin"]);
+    if (!auth) return;
+
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email || !isValidEmail(email)) {
+      return res.status(400).json({ error: "Please provide a valid email" });
+    }
+
+    const { data: existingProfile } = await supabaseServer
+      .from("profiles")
+      .select("id, role, approved")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (existingProfile?.role === "admin" && existingProfile?.approved === true) {
+      return res.status(200).json({ ok: true, already_admin: true });
+    }
+
+    const secret = getInviteSecret();
+    if (!secret) {
+      return res.status(500).json({
+        error: "Missing ADMIN_INVITE_SECRET (or fallback secret) on server",
+      });
+    }
+
+    const ttlHours = getInviteTtlHours();
+    const exp = Date.now() + ttlHours * 60 * 60 * 1000;
+    const token = createInviteToken(
+      {
+        email,
+        inviter_id: auth.user.id,
+        inviter_email: auth.user.email ?? null,
+        exp,
+      },
+      secret
+    );
+
+    const baseUrl = getAppBaseUrl(req);
+    const approveUrl = `${baseUrl}/admin-invite/accept?token=${encodeURIComponent(token)}`;
+
+    await sendInviteEmail(email, approveUrl, auth.user.email ?? null);
+
+    return res.status(200).json({ ok: true });
+  } catch (err: any) {
+    console.error("admin invite error:", err);
+    return res.status(500).json({ error: err?.message || "Failed to send invite" });
+  }
+}
+
