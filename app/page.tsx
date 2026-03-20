@@ -2,7 +2,7 @@
 "use client";
 
 import FileAttachment from "./components/FileAttachment";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 import EditableBlock from "./components/EditableBlock";
@@ -479,7 +479,7 @@ export default function HomePage() {
 "use client";
 
 import FileAttachment from "./components/FileAttachment";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 import EditableBlock from "./components/EditableBlock";
@@ -501,6 +501,15 @@ type Article = {
   id: string;
   title: string | null;
   authors: string | null;
+  manuscript_id?: string | null;
+};
+
+type ManuscriptOption = {
+  id: string;
+  title: string | null;
+  authors: string | null;
+  status: string | null;
+  created_at: string | null;
 };
 
 type ManualIssueArticle = {
@@ -708,6 +717,9 @@ export default function HomePage() {
   const [issue, setIssue] = useState<Issue | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [manualArticles, setManualArticles] = useState<ManualIssueArticle[]>([]);
+  const [manuscriptOptions, setManuscriptOptions] = useState<ManuscriptOption[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
 
   const [isOwner, setIsOwner] = useState(false);
@@ -725,6 +737,11 @@ export default function HomePage() {
   const [manualFeedback, setManualFeedback] = useState<HomeIssueFeedback | null>(
     null
   );
+  const [attachQuery, setAttachQuery] = useState("");
+  const [attachLoading, setAttachLoading] = useState(false);
+  const [attachSavingId, setAttachSavingId] = useState<string | null>(null);
+  const [attachFeedback, setAttachFeedback] =
+    useState<HomeIssueFeedback | null>(null);
 
   const handleBannerChange = useCallback(
     (url: string | null) => {
@@ -805,6 +822,64 @@ export default function HomePage() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isOwner) {
+      setManuscriptOptions([]);
+      setAttachFeedback(null);
+      setAttachQuery("");
+      return;
+    }
+
+    (async () => {
+      try {
+        setAttachLoading(true);
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+
+        if (!token) {
+          throw new Error("Please sign in again to load available submissions.");
+        }
+
+        const resp = await fetch("/api/admin/list-manuscripts", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(json?.error || "Failed to load existing submissions.");
+        }
+
+        if (!cancelled) {
+          setManuscriptOptions((json?.manuscripts || []) as ManuscriptOption[]);
+        }
+      } catch (err) {
+        console.error("Homepage manuscript options load failed:", err);
+        if (!cancelled) {
+          setAttachFeedback({
+            type: "error",
+            text:
+              err instanceof Error
+                ? err.message
+                : "Could not load existing submissions.",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setAttachLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner]);
 
   /* ---------------- Load homepage data ---------------- */
   useEffect(() => {
@@ -1048,6 +1123,117 @@ export default function HomePage() {
     }
   };
 
+  const attachedManuscriptIds = useMemo(() => {
+    const ids = articles
+      .map((article) => optionalArticleString(article.manuscript_id))
+      .filter((value): value is string => Boolean(value));
+
+    return new Set(ids);
+  }, [articles]);
+
+  const visibleManuscriptOptions = useMemo(() => {
+    const normalizedQuery = normalizeArticleString(attachQuery);
+
+    return manuscriptOptions
+      .filter((option) => !attachedManuscriptIds.has(option.id))
+      .filter((option) => {
+        if (!normalizedQuery) {
+          return true;
+        }
+
+        const haystack = [
+          option.id,
+          option.title,
+          option.authors,
+          option.status,
+        ]
+          .map((value) => normalizeArticleString(value))
+          .join(" ");
+
+        return haystack.includes(normalizedQuery);
+      })
+      .slice(0, normalizedQuery ? 8 : 6);
+  }, [attachQuery, attachedManuscriptIds, manuscriptOptions]);
+
+  const handleAttachManuscript = async (manuscriptId: string) => {
+    if (!issue?.id) {
+      setAttachFeedback({
+        type: "error",
+        text: "No current issue is available.",
+      });
+      return;
+    }
+
+    try {
+      setAttachSavingId(manuscriptId);
+      setAttachFeedback(null);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (!token) {
+        throw new Error("Please sign in again to manage current-issue articles.");
+      }
+
+      const resp = await fetch(`/api/issues/${issue.id}/attach-article`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ manuscript_id: manuscriptId }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(json?.error || "Failed to attach the submission.");
+      }
+
+      const attachedArticle = (json?.article || null) as Article | null;
+      if (attachedArticle?.id) {
+        setArticles((prev) => {
+          const next = [...prev];
+          const existingIndex = next.findIndex(
+            (article) =>
+              article.id === attachedArticle.id ||
+              (attachedArticle.manuscript_id &&
+                optionalArticleString(article.manuscript_id) ===
+                  optionalArticleString(attachedArticle.manuscript_id))
+          );
+
+          if (existingIndex >= 0) {
+            next[existingIndex] = {
+              ...next[existingIndex],
+              ...attachedArticle,
+            };
+            return next;
+          }
+
+          return [...next, attachedArticle];
+        });
+      }
+
+      setAttachFeedback({
+        type: "success",
+        text: json?.created
+          ? "Submission attached to the current issue."
+          : "That submission was already attached to the current issue.",
+      });
+      setAttachQuery("");
+    } catch (err) {
+      console.error("Attach current-issue article failed:", err);
+      setAttachFeedback({
+        type: "error",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Could not attach the submission to the issue.",
+      });
+    } finally {
+      setAttachSavingId(null);
+    }
+  };
+
   const heroShowPdf = !bannerUrl && coverIsPdf && !!coverSrc;
   const heroImageSrc =
     bannerUrl || (!coverIsPdf ? coverSrc : null) || "/Website Banner.jpg";
@@ -1188,102 +1374,179 @@ export default function HomePage() {
 
             <div className="home-issue__content">
               {isOwner && (
-                <div className="home-issue__owner-tools">
-                  <div className="home-issue__owner-copy">
-                    <h3>Article Visibility Override</h3>
-                    <p>
-                      Add a manual article card when the current issue feed misses
-                      an item. Matching title/authors or article id merges with
-                      live articles so duplicates do not render twice.
-                    </p>
-                  </div>
-
-                  <div className="home-issue__owner-form">
-                    <input
-                      type="text"
-                      placeholder="Article title"
-                      value={manualDraft.title}
-                      onChange={(event) =>
-                        setManualDraft((prev) => ({
-                          ...prev,
-                          title: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      type="text"
-                      placeholder="Authors"
-                      value={manualDraft.authors}
-                      onChange={(event) =>
-                        setManualDraft((prev) => ({
-                          ...prev,
-                          authors: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      type="text"
-                      placeholder="Article ID (optional)"
-                      value={manualDraft.articleId}
-                      onChange={(event) =>
-                        setManualDraft((prev) => ({
-                          ...prev,
-                          articleId: event.target.value,
-                        }))
-                      }
-                    />
-                    <input
-                      type="url"
-                      placeholder="Link URL (optional)"
-                      value={manualDraft.href}
-                      onChange={(event) =>
-                        setManualDraft((prev) => ({
-                          ...prev,
-                          href: event.target.value,
-                        }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="home-issue__owner-submit"
-                      onClick={() => {
-                        void handleAddManualArticle();
-                      }}
-                      disabled={manualSaving}
-                    >
-                      {manualSaving ? "Saving..." : "Add Article Card"}
-                    </button>
-                  </div>
-
-                  {manualFeedback && (
-                    <p
-                      className={`home-issue__owner-feedback home-issue__owner-feedback--${manualFeedback.type}`}
-                    >
-                      {manualFeedback.text}
-                    </p>
-                  )}
-
-                  {manualArticles.length > 0 && (
-                    <div className="home-issue__owner-list">
-                      {manualArticles.map((entry) => (
-                        <div key={entry.id} className="home-issue__owner-chip">
-                          <div>
-                            <strong>{entry.title || "Manual article"}</strong>
-                            {entry.authors && <span>{entry.authors}</span>}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleRemoveManualArticle(entry.id);
-                            }}
-                            disabled={manualSaving}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+                <div className="home-issue__owner-stack">
+                  <div className="home-issue__owner-tools">
+                    <div className="home-issue__owner-copy">
+                      <h3>Attach Submission To Current Issue</h3>
+                      <p>
+                        This writes a real row to the <code>articles</code> table
+                        for the current issue, so the homepage gets a normal
+                        article link automatically.
+                      </p>
                     </div>
-                  )}
+
+                    <div className="home-issue__attach-search">
+                      <input
+                        type="text"
+                        placeholder="Search submissions by title, author, status, or id"
+                        value={attachQuery}
+                        onChange={(event) => setAttachQuery(event.target.value)}
+                      />
+                    </div>
+
+                    {attachFeedback && (
+                      <p
+                        className={`home-issue__owner-feedback home-issue__owner-feedback--${attachFeedback.type}`}
+                      >
+                        {attachFeedback.text}
+                      </p>
+                    )}
+
+                    <div className="home-issue__attach-results">
+                      {attachLoading ? (
+                        <p className="home-muted">
+                          Loading available submissions...
+                        </p>
+                      ) : visibleManuscriptOptions.length > 0 ? (
+                        visibleManuscriptOptions.map((option) => (
+                          <div
+                            key={option.id}
+                            className="home-issue__attach-card"
+                          >
+                            <div className="home-issue__attach-copy">
+                              <strong>{option.title || "Untitled submission"}</strong>
+                              {option.authors && <p>{option.authors}</p>}
+                              <div className="home-issue__attach-meta">
+                                <span>{option.id}</span>
+                                {option.status && (
+                                  <span className="home-issue__attach-pill">
+                                    {option.status}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="home-issue__attach-button"
+                              onClick={() => {
+                                void handleAttachManuscript(option.id);
+                              }}
+                              disabled={attachSavingId === option.id}
+                            >
+                              {attachSavingId === option.id
+                                ? "Attaching..."
+                                : "Attach"}
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="home-muted">
+                          {attachQuery.trim()
+                            ? "No matching submissions available to attach."
+                            : "No unattached submissions available right now."}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="home-issue__owner-tools">
+                    <div className="home-issue__owner-copy">
+                      <h3>Article Visibility Override</h3>
+                      <p>
+                        Use this only when you need a temporary display card.
+                        Matching title/authors or article id merges with live
+                        articles so duplicates do not render twice.
+                      </p>
+                    </div>
+
+                    <div className="home-issue__owner-form">
+                      <input
+                        type="text"
+                        placeholder="Article title"
+                        value={manualDraft.title}
+                        onChange={(event) =>
+                          setManualDraft((prev) => ({
+                            ...prev,
+                            title: event.target.value,
+                          }))
+                        }
+                      />
+                      <input
+                        type="text"
+                        placeholder="Authors"
+                        value={manualDraft.authors}
+                        onChange={(event) =>
+                          setManualDraft((prev) => ({
+                            ...prev,
+                            authors: event.target.value,
+                          }))
+                        }
+                      />
+                      <input
+                        type="text"
+                        placeholder="Article ID (optional)"
+                        value={manualDraft.articleId}
+                        onChange={(event) =>
+                          setManualDraft((prev) => ({
+                            ...prev,
+                            articleId: event.target.value,
+                          }))
+                        }
+                      />
+                      <input
+                        type="url"
+                        placeholder="Link URL (optional)"
+                        value={manualDraft.href}
+                        onChange={(event) =>
+                          setManualDraft((prev) => ({
+                            ...prev,
+                            href: event.target.value,
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="home-issue__owner-submit"
+                        onClick={() => {
+                          void handleAddManualArticle();
+                        }}
+                        disabled={manualSaving}
+                      >
+                        {manualSaving ? "Saving..." : "Add Article Card"}
+                      </button>
+                    </div>
+
+                    {manualFeedback && (
+                      <p
+                        className={`home-issue__owner-feedback home-issue__owner-feedback--${manualFeedback.type}`}
+                      >
+                        {manualFeedback.text}
+                      </p>
+                    )}
+
+                    {manualArticles.length > 0 && (
+                      <div className="home-issue__owner-list">
+                        {manualArticles.map((entry) => (
+                          <div key={entry.id} className="home-issue__owner-chip">
+                            <div>
+                              <strong>{entry.title || "Manual article"}</strong>
+                              {entry.authors && <span>{entry.authors}</span>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleRemoveManualArticle(entry.id);
+                              }}
+                              disabled={manualSaving}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

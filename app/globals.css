@@ -842,6 +842,12 @@ body {
   gap: 16px;
 }
 
+.home-issue__owner-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .home-issue__owner-tools {
   border: 1px solid rgba(106, 50, 145, 0.16);
   border-radius: 16px;
@@ -862,6 +868,105 @@ body {
   font-size: 13px;
   line-height: 1.5;
   color: #6b7280;
+}
+
+.home-issue__owner-copy code {
+  font-size: 12px;
+  color: #6a3291;
+  background: rgba(106, 50, 145, 0.08);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.home-issue__attach-search {
+  margin-top: 14px;
+}
+
+.home-issue__attach-search input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(17, 24, 39, 0.14);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.home-issue__attach-search input::placeholder {
+  color: #9ca3af;
+}
+
+.home-issue__attach-results {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.home-issue__attach-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.home-issue__attach-copy {
+  min-width: 0;
+}
+
+.home-issue__attach-copy strong {
+  display: block;
+  font-size: 13px;
+  color: #111827;
+}
+
+.home-issue__attach-copy p {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.home-issue__attach-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.home-issue__attach-meta span {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.home-issue__attach-pill {
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.06);
+  color: #111827;
+  font-weight: 700;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.home-issue__attach-button {
+  border: none;
+  border-radius: 12px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.home-issue__attach-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .home-issue__owner-form {
@@ -1075,6 +1180,10 @@ body {
   }
 
   .home-issue__owner-form {
+    grid-template-columns: 1fr;
+  }
+
+  .home-issue__attach-card {
     grid-template-columns: 1fr;
   }
 

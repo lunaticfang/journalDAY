@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabaseServer
       .from("manuscripts")
-      .select("id, title, status, submitter_id, created_at")
+      .select("id, title, authors, status, submitter_id, created_at")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
