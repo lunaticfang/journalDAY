@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+
+type BootstrapStatus = {
+  enabled?: boolean;
+};
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -11,6 +16,32 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [bootstrapAvailable, setBootstrapAvailable] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const resp = await fetch("/api/admin/bootstrap/status");
+        const json = (await resp.json().catch(() => ({}))) as BootstrapStatus;
+
+        if (!resp.ok) {
+          return;
+        }
+
+        if (!cancelled) {
+          setBootstrapAvailable(Boolean(json.enabled));
+        }
+      } catch (err) {
+        console.error("Admin login bootstrap status error:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -27,11 +58,6 @@ export default function AdminLoginPage() {
         throw error || new Error("Invalid credentials");
       }
 
-      // IMPORTANT:
-      // Do NOT check role here.
-      // Do NOT create profile here.
-      // Do NOT redirect anywhere else.
-      // Admin authorization happens inside /admin.
       router.replace("/admin");
     } catch (err: any) {
       console.error("Admin login error:", err);
@@ -127,15 +153,23 @@ export default function AdminLoginPage() {
             cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Signing in…" : "Sign in"}
+          {loading ? "Signing in..." : "Sign in"}
         </button>
       </form>
 
       <p style={{ marginTop: 10, fontSize: 13 }}>
-        <a href="/" style={{ color: "#6A3291" }}>
-          ← Back to home
-        </a>
+        <Link href="/" style={{ color: "#6A3291" }}>
+          Back to home
+        </Link>
       </p>
+
+      {bootstrapAvailable && (
+        <p style={{ marginTop: 8, fontSize: 13 }}>
+          <Link href="/admin/bootstrap" style={{ color: "#6A3291" }}>
+            First-time setup
+          </Link>
+        </p>
+      )}
     </main>
   );
 }

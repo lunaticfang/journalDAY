@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 const OWNER_EMAIL = "updaytesjournal@gmail.com";
@@ -12,8 +12,13 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
+    if (pathname === "/admin/login" || pathname === "/admin/bootstrap") {
+      return;
+    }
+
     (async () => {
       const { data: sessionData } = await supabase.auth.getSession();
       const user = sessionData.session?.user;
@@ -45,7 +50,7 @@ export default function AdminLayout({
         return;
       }
     })();
-  }, [router]);
+  }, [pathname, router]);
 
   return <>{children}</>;
 }
