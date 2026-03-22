@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     const { data: manuscript, error: mErr } = await supabaseServer
       .from("manuscripts")
       .select(
-        "id, title, abstract, status, created_at, authors, submitter_id, author_id, file_storage_path, word_path"
+        "id, title, abstract, status, created_at, authors, submitter_id, author_id, current_version, word_path"
       )
       .eq("id", id)
       .maybeSingle();

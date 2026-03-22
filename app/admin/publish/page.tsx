@@ -11,8 +11,6 @@ type Manuscript = {
   created_at: string | null;
   // optional authors or pdf refs if you ever add them
   authors?: string | null;
-  pdf_path?: string | null;
-  file_storage_path?: string | null;
 };
 
 const ISSUE_BUCKET =
@@ -136,7 +134,7 @@ export default function PublishIssuePage() {
       // 1) load manuscript titles/authors in bulk
       const { data: msData, error: msErr } = await supabase
         .from("manuscripts")
-        .select("id, title, authors, pdf_path, file_storage_path")
+        .select("id, title, authors")
         .in("id", selectedIds);
 
       if (msErr) {
@@ -151,8 +149,7 @@ export default function PublishIssuePage() {
       const articleRows: any[] = [];
 
       for (const m of manuscriptsFound) {
-        let pdfPath: string | null =
-          m.pdf_path ?? m.file_storage_path ?? null;
+        let pdfPath: string | null = null;
 
         // If no direct pdfPath on manuscript, try latest version row
         if (!pdfPath) {

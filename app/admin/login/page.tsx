@@ -170,6 +170,12 @@ export default function AdminLoginPage() {
           </Link>
         </p>
       )}
+
+      <p style={{ marginTop: 8, fontSize: 13 }}>
+        <Link href="/admin/request-access" style={{ color: "#6A3291" }}>
+          Request admin access
+        </Link>
+      </p>
     </main>
   );
 }

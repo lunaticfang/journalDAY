@@ -12,7 +12,7 @@ type Manuscript = {
   status: string | null;
   created_at: string | null;
   authors?: string | null;
-  file_storage_path?: string | null;
+  current_version?: string | null;
   word_path?: string | null;
 };
 
@@ -267,7 +267,7 @@ export default function AdminSubmissionDetail() {
                 className="admin-btn admin-btn--ghost"
                 type="button"
                 onClick={() => openSignedUrl("pdf")}
-                disabled={!manuscript.file_storage_path}
+                disabled={!manuscript.current_version}
               >
                 View PDF
               </button>

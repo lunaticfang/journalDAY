@@ -95,7 +95,6 @@ export default async function handler(req, res) {
         status: "submitted",
         authors: authorsValue,
         word_path: word_storage_path,
-        file_storage_path: file_storage_path,
       })
       .select()
       .single();
