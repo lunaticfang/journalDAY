@@ -4,8 +4,8 @@ import { requireRole } from "../../../../lib/adminAuth";
 import {
   createInviteToken,
   getAppBaseUrl,
-  getInviteSecret,
   getInviteTtlHours,
+  hashInviteToken,
 } from "../../../../lib/adminInviteToken";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -68,6 +68,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!auth) return;
 
     const email = String(req.body?.email || "").trim().toLowerCase();
+    const requestId = String(req.body?.requestId || "").trim() || null;
     if (!email || !isValidEmail(email)) {
       return res.status(400).json({ error: "Please provide a valid email" });
     }
@@ -78,28 +79,66 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("email", email)
       .maybeSingle();
 
-    if (existingProfile?.role === "admin" && existingProfile?.approved === true) {
+    if (
+      existingProfile?.approved === true &&
+      ["owner", "admin"].includes(String(existingProfile.role || ""))
+    ) {
       return res.status(200).json({ ok: true, already_admin: true });
     }
 
-    const secret = getInviteSecret();
-    if (!secret) {
-      return res.status(500).json({
-        error: "Missing ADMIN_INVITE_SECRET (or fallback secret) on server",
-      });
+    if (requestId) {
+      const { data: existingRequest, error: requestError } = await supabaseServer
+        .from("admin_access_requests")
+        .select("id, email")
+        .eq("id", requestId)
+        .maybeSingle();
+
+      if (requestError) {
+        return res.status(500).json({ error: requestError.message || "Could not load request" });
+      }
+
+      if (!existingRequest) {
+        return res.status(404).json({ error: "Admin access request not found" });
+      }
+
+      if (String(existingRequest.email || "").trim().toLowerCase() !== email) {
+        return res.status(400).json({ error: "Request email does not match invite email" });
+      }
     }
 
     const ttlHours = getInviteTtlHours();
-    const exp = Date.now() + ttlHours * 60 * 60 * 1000;
-    const token = createInviteToken(
-      {
-        email,
-        inviter_id: auth.user.id,
-        inviter_email: auth.user.email ?? null,
-        exp,
-      },
-      secret
-    );
+    const token = createInviteToken();
+    const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString();
+    const tokenHash = hashInviteToken(token);
+
+    const { error: revokeErr } = await supabaseServer
+      .from("admin_invites")
+      .update({
+        status: "revoked",
+        revoked_at: new Date().toISOString(),
+        revoked_by: auth.user.id,
+        revoked_by_email: auth.user.email ?? auth.profile?.email ?? null,
+      })
+      .eq("email", email)
+      .eq("status", "pending");
+
+    if (revokeErr) {
+      return res.status(500).json({ error: revokeErr.message || "Could not revoke prior invites" });
+    }
+
+    const { error: inviteErr } = await supabaseServer.from("admin_invites").insert({
+      email,
+      inviter_id: auth.user.id,
+      inviter_email: auth.user.email ?? auth.profile?.email ?? null,
+      request_id: requestId,
+      token_hash: tokenHash,
+      status: "pending",
+      expires_at: expiresAt,
+    });
+
+    if (inviteErr) {
+      return res.status(500).json({ error: inviteErr.message || "Could not store admin invite" });
+    }
 
     const baseUrl = getAppBaseUrl(req);
     const approveUrl = `${baseUrl}/admin-invite/accept?token=${encodeURIComponent(token)}`;
@@ -112,4 +151,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: err?.message || "Failed to send invite" });
   }
 }
-

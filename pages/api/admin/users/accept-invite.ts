@@ -2,9 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import {
   getAppBaseUrl,
-  getInviteSecret,
+  hashInviteToken,
   randomPassword,
-  verifyInviteToken,
 } from "../../../../lib/adminInviteToken";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -74,19 +73,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: "Missing invite token" });
     }
 
-    const secret = getInviteSecret();
-    if (!secret) {
-      return res.status(500).json({
-        error: "Missing ADMIN_INVITE_SECRET (or fallback secret) on server",
-      });
+    const tokenHash = hashInviteToken(token);
+    const { data: invite, error: inviteErr } = await supabaseServer
+      .from("admin_invites")
+      .select("id, email, request_id, status, expires_at, used_at, revoked_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (inviteErr) {
+      return res.status(500).json({ error: inviteErr.message || "Could not load invite" });
     }
 
-    const payload = verifyInviteToken(token, secret);
-    if (!payload) {
+    if (!invite) {
       return res.status(400).json({ error: "Invite is invalid or expired" });
     }
 
-    const email = String(payload.email || "").trim().toLowerCase();
+    if (invite.status !== "pending" || invite.used_at || invite.revoked_at) {
+      return res.status(400).json({ error: "Invite has already been used or revoked" });
+    }
+
+    if (!invite.expires_at || new Date(invite.expires_at).getTime() < Date.now()) {
+      return res.status(400).json({ error: "Invite is invalid or expired" });
+    }
+
+    const email = String(invite.email || "").trim().toLowerCase();
     if (!email) {
       return res.status(400).json({ error: "Invite payload is invalid" });
     }
@@ -150,10 +160,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     await sendSecondEmail(email, actionLink);
 
+    const timestamp = new Date().toISOString();
+
+    const { error: inviteUpdateErr } = await supabaseServer
+      .from("admin_invites")
+      .update({
+        status: "used",
+        used_at: timestamp,
+      })
+      .eq("id", invite.id);
+
+    if (inviteUpdateErr) {
+      return res.status(500).json({ error: inviteUpdateErr.message || "Failed to finalize invite" });
+    }
+
+    if (invite.request_id) {
+      await supabaseServer
+        .from("admin_access_requests")
+        .update({
+          status: "approved",
+          updated_at: timestamp,
+          reviewed_at: timestamp,
+          reviewed_by_email: "invite-accepted",
+        })
+        .eq("id", invite.request_id);
+    }
+
     return res.status(200).json({ ok: true });
   } catch (err: any) {
     console.error("accept admin invite error:", err);
     return res.status(500).json({ error: err?.message || "Failed to accept invite" });
   }
 }
-

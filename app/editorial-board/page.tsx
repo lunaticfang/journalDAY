@@ -1,8 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import FileAttachment from "../components/FileAttachment";
+import { getCurrentClientProfile } from "../../lib/clientPermissions";
+
+const OwnerFileAttachment = dynamic(() => import("../components/FileAttachment"), {
+  ssr: false,
+});
 
 type Member = {
   id: string;
@@ -16,8 +21,6 @@ type Member = {
   order_index: number | null;
   active: boolean | null;
 };
-
-const OWNER_EMAIL = "updaytesjournal@gmail.com";
 
 const SECTION_LABELS: Record<string, string> = {
   editor_in_chief: "Editor-in-Chief",
@@ -52,8 +55,8 @@ export default function EditorialBoardPage() {
 
   useEffect(() => {
     (async () => {
-      const { data: authData } = await supabase.auth.getUser();
-      setIsOwner(authData?.user?.email === OWNER_EMAIL);
+      const access = await getCurrentClientProfile();
+      setIsOwner(access.isOwner);
 
       const { data: sessionData } = await supabase.auth.getSession();
       setAuthToken(sessionData.session?.access_token ?? null);
@@ -73,7 +76,9 @@ export default function EditorialBoardPage() {
       setMembers((data as Member[]) ?? []);
 
       try {
-        const orderResp = await fetch("/api/site-content/get");
+        const orderResp = await fetch(
+          `/api/site-content/get?keys=${encodeURIComponent(SECTION_ORDER_KEY)}`
+        );
         const orderJson = await orderResp.json().catch(() => ({}));
         const rawOrder = orderJson?.[SECTION_ORDER_KEY];
         if (typeof rawOrder === "string") {
@@ -94,7 +99,14 @@ export default function EditorialBoardPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsOwner(session?.user?.email === OWNER_EMAIL);
+      if (!session?.user) {
+        setIsOwner(false);
+        return;
+      }
+
+      void getCurrentClientProfile().then((access) => {
+        setIsOwner(access.isOwner);
+      });
       setAuthToken(session?.access_token ?? null);
     });
 
@@ -901,7 +913,7 @@ export default function EditorialBoardPage() {
 
                   {createDraftId && (
                     <div style={{ marginBottom: 10 }}>
-                      <FileAttachment
+                      <OwnerFileAttachment
                         contentKey={`editorial_board.${createDraftId}.photo`}
                         isEditor={isOwner}
                         bucketName="editorial-photos"
@@ -1075,7 +1087,7 @@ export default function EditorialBoardPage() {
                   }}
                 >
                   <div style={{ marginBottom: 10 }}>
-                    <FileAttachment
+                    <OwnerFileAttachment
                       contentKey={`editorial_board.${m.id}.photo`}
                       isEditor={isOwner}
                       bucketName="editorial-photos"

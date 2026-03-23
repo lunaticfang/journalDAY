@@ -1,10 +1,60 @@
-// app/layout.tsx
 import "./globals.css";
+import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import MainNav from "./components/MainNav";
+import {
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  getSiteUrl,
+  toAbsoluteUrl,
+} from "../lib/seo";
 
-export const metadata = {
-  title: "JournalDAY",
-  description: "Online journal platform",
+export const metadata: Metadata = {
+  metadataBase: new URL(getSiteUrl()),
+  applicationName: SITE_NAME,
+  title: {
+    default: `${SITE_NAME} | Peer-Reviewed Journal`,
+    template: `%s | ${SITE_NAME}`,
+  },
+  description: SITE_DESCRIPTION,
+  keywords: [
+    "journal",
+    "peer-reviewed journal",
+    "academic journal",
+    "research publication",
+    "scholarly article",
+    "medical journal",
+  ],
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    url: getSiteUrl(),
+    title: `${SITE_NAME} | Peer-Reviewed Journal`,
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: toAbsoluteUrl("/Website Banner.jpg"),
+        width: 1200,
+        height: 630,
+        alt: `${SITE_NAME} banner`,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE_NAME} | Peer-Reviewed Journal`,
+    description: SITE_DESCRIPTION,
+    images: [toAbsoluteUrl("/Website Banner.jpg")],
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#6A3291",
 };
 
 export default function RootLayout({
@@ -30,7 +80,6 @@ export default function RootLayout({
             flexDirection: "column",
           }}
         >
-          {/* Top navigation header */}
           <header
             style={{
               position: "sticky",
@@ -51,8 +100,7 @@ export default function RootLayout({
                 justifyContent: "space-between",
               }}
             >
-              {/* Brand */}
-              <a
+              <Link
                 href="/"
                 style={{
                   fontSize: 20,
@@ -63,14 +111,12 @@ export default function RootLayout({
                 }}
               >
                 UpDAYtes
-              </a>
+              </Link>
 
-              {/* Client-side navigation */}
               <MainNav />
             </div>
           </header>
 
-          {/* Main content */}
           <main
             style={{
               flex: 1,
@@ -80,7 +126,6 @@ export default function RootLayout({
             <div style={{ maxWidth: 1120, margin: "0 auto" }}>{children}</div>
           </main>
 
-          {/* Footer */}
           <footer
             style={{
               borderTop: "1px solid #e5e7eb",
@@ -98,3 +143,4 @@ export default function RootLayout({
     </html>
   );
 }
+

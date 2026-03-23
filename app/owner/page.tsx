@@ -3,9 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-
-const OWNER_EMAIL = "updaytesjournal@gmail.com";
+import { getCurrentClientProfile } from "@/lib/clientPermissions";
 
 export default function OwnerPage() {
   const router = useRouter();
@@ -13,10 +11,8 @@ export default function OwnerPage() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-
-      if (!user || user.email !== OWNER_EMAIL) {
+      const access = await getCurrentClientProfile();
+      if (!access.user || !access.isOwner) {
         router.replace("/");
         return;
       }

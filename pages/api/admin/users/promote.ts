@@ -1,46 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseServer } from "../../../../lib/supabaseServer";
-import { isOwner } from "../../../../lib/isOwner";
-
-function getBearerToken(req: NextApiRequest) {
-  const header = req.headers.authorization || "";
-  const [scheme, token] = header.split(" ");
-  if (scheme !== "Bearer" || !token) return null;
-  return token;
-}
-
-async function requireOwnerOrAdmin(req: NextApiRequest, res: NextApiResponse) {
-  const token = getBearerToken(req);
-  if (!token) {
-    res.status(401).json({ error: "Missing auth token" });
-    return null;
-  }
-
-  const { data: userData, error: authErr } =
-    await supabaseServer.auth.getUser(token);
-  if (authErr || !userData?.user) {
-    res.status(401).json({ error: "Invalid auth token" });
-    return null;
-  }
-
-  const user = userData.user;
-  if (isOwner(user)) {
-    return { id: user.id, email: user.email ?? null };
-  }
-
-  const { data: profile, error: profileErr } = await supabaseServer
-    .from("profiles")
-    .select("role, approved")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (profileErr || !profile || profile.approved !== true || profile.role !== "admin") {
-    res.status(403).json({ error: "Not authorized" });
-    return null;
-  }
-
-  return { id: user.id, email: user.email ?? null };
-}
+import { requireRole } from "../../../../lib/adminAuth";
+import { isOwnerProfile } from "../../../../lib/accessControl";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -48,8 +9,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const actor = await requireOwnerOrAdmin(req, res);
-  if (!actor) return;
+  const auth = await requireRole(req, res, ["admin"]);
+  if (!auth) return;
 
   const userId = String(req.body?.userId || "").trim();
   if (!userId) {
@@ -69,6 +30,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(404).json({ error: "User profile not found" });
   }
 
+  if (isOwnerProfile(existing)) {
+    return res.status(400).json({ error: "Owner access is already protected" });
+  }
+
   const { data: updated, error: updateErr } = await supabaseServer
     .from("profiles")
     .update({ role: "admin", approved: true })
@@ -83,6 +48,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   return res.status(200).json({
     ok: true,
     user: updated,
-    sanctioned_by: actor.email,
+    sanctioned_by: auth.user.email ?? auth.profile?.email ?? null,
   });
 }

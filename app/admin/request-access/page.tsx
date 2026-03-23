@@ -7,6 +7,7 @@ export default function AdminRequestAccessPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [website, setWebsite] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export default function AdminRequestAccessPage() {
           name,
           email,
           message,
+          website,
         }),
       });
 
@@ -37,13 +39,15 @@ export default function AdminRequestAccessPage() {
       }
 
       setSuccessMsg(
-        json?.emailed
-          ? "Request submitted. The owner has been notified and can invite you if approved."
-          : "Request submitted and logged. The owner can review it and invite you if approved."
+        json?.message ||
+          (json?.emailed
+            ? "Request submitted. The owner has been notified and can invite you if approved."
+            : "Request submitted and logged. The owner can review it and invite you if approved.")
       );
       setName("");
       setEmail("");
       setMessage("");
+      setWebsite("");
     } catch (err) {
       console.error("admin request access submit error:", err);
       setErrorMsg(
@@ -86,7 +90,9 @@ export default function AdminRequestAccessPage() {
         }}
       >
         Admin access requires approval from the owner or an existing approved
-        admin. Submit your request here and wait for an invitation.
+        admin. Submit your request here and wait for an invitation. One request
+        is enough - we will gently stop duplicates so your inbox does not turn
+        into a paperwork festival.
       </p>
 
       {errorMsg && (
@@ -127,6 +133,19 @@ export default function AdminRequestAccessPage() {
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div style={honeypotStyle} aria-hidden="true">
+          <label htmlFor="admin-request-website">Website</label>
+          <input
+            id="admin-request-website"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
             style={inputStyle}
           />
         </div>
@@ -191,4 +210,13 @@ const inputStyle: React.CSSProperties = {
   borderRadius: 6,
   border: "1px solid #d1d5db",
   outline: "none",
+};
+
+const honeypotStyle: React.CSSProperties = {
+  position: "absolute",
+  left: "-10000px",
+  top: "auto",
+  width: 1,
+  height: 1,
+  overflow: "hidden",
 };

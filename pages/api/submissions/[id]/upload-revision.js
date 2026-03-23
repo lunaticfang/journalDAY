@@ -1,6 +1,6 @@
 // pages/api/submissions/[id]/upload-revision.js
 import { supabaseServer } from "../../../../lib/supabaseServer";
-import { isOwner } from "../../../../lib/isOwner";
+import { getProfileByUserId, isApprovedProfileRole } from "../../../../lib/accessControl";
 
 const BUCKET = process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
 
@@ -65,25 +65,13 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "Manuscript not found" });
     }
 
-    let allowed = isOwner(user);
-    if (!allowed) {
-      const { data: profile, error: profileErr } = await supabaseServer
-        .from("profiles")
-        .select("role, approved")
-        .eq("id", user.id)
-        .maybeSingle();
+    const profile = await getProfileByUserId(user.id, supabaseServer);
+    const staffAllowed = isApprovedProfileRole(profile, ["admin", "editor"]);
 
-      const staffAllowed =
-        !profileErr &&
-        !!profile &&
-        profile.approved === true &&
-        ["admin", "editor"].includes(profile.role);
+    const ownsManuscript =
+      manuscript.author_id === user.id || manuscript.submitter_id === user.id;
 
-      const ownsManuscript =
-        manuscript.author_id === user.id || manuscript.submitter_id === user.id;
-
-      allowed = staffAllowed || ownsManuscript;
-    }
+    const allowed = staffAllowed || ownsManuscript;
 
     if (!allowed) {
       return res.status(403).json({ error: "Not authorized" });

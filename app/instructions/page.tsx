@@ -1,4 +1,12 @@
 // app/instructions/page.tsx
+import { buildPageMetadata } from "../../lib/seo";
+
+export const metadata = buildPageMetadata({
+  title: "Author Guidelines",
+  description:
+    "Read the main author instructions, manuscript preparation guidance, and publication policies for UpDAYtes.",
+  path: "/instructions",
+});
 
 export default function InstructionsPage() {
   // TODO: replace this with your real Supabase public URL

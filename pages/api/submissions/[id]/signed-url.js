@@ -1,6 +1,6 @@
 // pages/api/submissions/[id]/signed-url.js
 import { supabaseServer } from "../../../../lib/supabaseServer";
-import { isOwner } from "../../../../lib/isOwner";
+import { isApprovedProfileRole, isOwnerProfile } from "../../../../lib/accessControl";
 
 const BUCKET = process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
 
@@ -39,10 +39,6 @@ async function getAuthContext(req, res) {
   return { token, user, profile: profile || null };
 }
 
-function isApprovedRole(profile, roles) {
-  return !!profile && profile.approved === true && roles.includes(profile.role);
-}
-
 async function reviewerHasAssignment(manuscriptId, reviewerId) {
   const { data, error } = await supabaseServer
     .from("manuscript_reviews")
@@ -72,9 +68,9 @@ export default async function handler(req, res) {
 
     const user = auth.user;
     const profile = auth.profile;
-    const owner = user ? isOwner(user) : false;
+    const owner = isOwnerProfile(profile);
 
-    const isStaff = owner || isApprovedRole(profile, ["admin", "editor"]);
+    const isStaff = isApprovedProfileRole(profile, ["admin", "editor"]);
     const isReviewer =
       !owner && !!profile && profile.approved === true && profile.role === "reviewer";
 
@@ -88,7 +84,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: "Missing auth token" });
       }
 
-      if (!owner && !isApprovedRole(profile, ["admin", "editor", "reviewer"])) {
+      if (!isApprovedProfileRole(profile, ["admin", "editor", "reviewer"])) {
         return res.status(403).json({ error: "Not authorized" });
       }
 

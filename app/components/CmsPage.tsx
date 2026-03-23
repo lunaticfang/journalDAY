@@ -1,10 +1,8 @@
 "use client";
 
-import EditableBlock from "./EditableBlock";
+import ContentBlock from "./ContentBlock";
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
-
-const OWNER_EMAIL = "updaytesjournal@gmail.com";
+import { getCurrentClientProfile } from "../../lib/clientPermissions";
 
 export default function CmsPage({
   contentKey,
@@ -16,10 +14,8 @@ export default function CmsPage({
   const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user?.email === OWNER_EMAIL) {
-        setIsOwner(true);
-      }
+    getCurrentClientProfile().then((access) => {
+      setIsOwner(access.isOwner);
     });
   }, []);
 
@@ -29,7 +25,7 @@ export default function CmsPage({
         {title}
       </h1>
 
-      <EditableBlock contentKey={contentKey} isEditor={isOwner} />
+      <ContentBlock contentKey={contentKey} isEditor={isOwner} />
     </main>
   );
 }

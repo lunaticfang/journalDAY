@@ -5,6 +5,7 @@ import {
   getOwnerEmail,
 } from "../../../../lib/adminBootstrap";
 import { supabaseServer } from "../../../../lib/supabaseServer";
+import { OWNER_ROLE } from "../../../../lib/accessControl";
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -82,11 +83,14 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Could not resolve user id." });
     }
 
+    const normalizedOwnerEmail = getOwnerEmail().toLowerCase();
+    const assignedRole = email === normalizedOwnerEmail ? OWNER_ROLE : "admin";
+
     const { error: profileErr } = await supabaseServer.from("profiles").upsert(
       {
         id: user.id,
         email,
-        role: "admin",
+        role: assignedRole,
         approved: true,
       },
       { onConflict: "id" }
@@ -101,9 +105,9 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       email,
-      role: "admin",
+      role: assignedRole,
       ownerEmail: getOwnerEmail(),
-      isOwnerEmail: email === getOwnerEmail().toLowerCase(),
+      isOwnerEmail: assignedRole === OWNER_ROLE,
     });
   } catch (err) {
     console.error("bootstrap create error:", err);

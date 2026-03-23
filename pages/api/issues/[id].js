@@ -1,6 +1,6 @@
 // pages/api/issues/[id].js
 import { supabaseServer } from "../../../lib/supabaseServer";
-import { isOwner } from "../../../lib/isOwner";
+import { requireRole } from "../../../lib/adminAuth";
 
 export default async function handler(req, res) {
   try {
@@ -18,43 +18,8 @@ export default async function handler(req, res) {
     // POST: Update issue cover_url (owner or approved editor/admin)
     // ------------------------------------------------------------
     if (req.method === "POST") {
-      const authHeader = req.headers.authorization || "";
-      const token = authHeader.startsWith("Bearer ")
-        ? authHeader.slice("Bearer ".length)
-        : null;
-
-      if (!token) {
-        return res.status(401).json({ error: "Missing auth token" });
-      }
-
-      const { data: userData, error: userErr } =
-        await supabaseServer.auth.getUser(token);
-
-      if (userErr || !userData?.user) {
-        return res.status(401).json({ error: "Invalid auth token" });
-      }
-
-      const user = userData.user;
-
-      let allowed = isOwner(user);
-      if (!allowed) {
-        const { data: profile, error: profErr } = await supabaseServer
-          .from("profiles")
-          .select("role, approved")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        const staffRoles = ["admin", "editor"];
-        allowed =
-          !profErr &&
-          !!profile &&
-          profile.approved === true &&
-          staffRoles.includes(profile.role);
-      }
-
-      if (!allowed) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
+      const auth = await requireRole(req, res, ["admin", "editor"]);
+      if (!auth) return;
 
       const { cover_url } = req.body || {};
       const nextCoverUrl =

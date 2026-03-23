@@ -1,7 +1,5 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
-import { isOwner } from "../../../lib/isOwner";
-
-const ALLOWED_ROLES = ["admin", "editor"];
+import { requireRole } from "../../../lib/adminAuth";
 
 function getToken(req) {
   const header = req.headers.authorization || "";
@@ -12,45 +10,6 @@ function getToken(req) {
 function normalizeOptional(value) {
   const trimmed = (value ?? "").trim();
   return trimmed ? trimmed : null;
-}
-
-async function requireEditor(req, res) {
-  const token = getToken(req);
-  if (!token) {
-    res.status(401).json({ error: "Missing auth token" });
-    return null;
-  }
-
-  const { data: userData, error: authErr } = await supabaseServer.auth.getUser(
-    token
-  );
-  if (authErr || !userData?.user) {
-    res.status(401).json({ error: "Invalid auth token" });
-    return null;
-  }
-
-  const user = userData.user;
-  if (isOwner(user)) {
-    return { user };
-  }
-
-  const { data: profile, error: profileErr } = await supabaseServer
-    .from("profiles")
-    .select("role, approved")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (
-    profileErr ||
-    !profile ||
-    profile.approved !== true ||
-    !ALLOWED_ROLES.includes(profile.role)
-  ) {
-    res.status(403).json({ error: "Not authorized" });
-    return null;
-  }
-
-  return { user, profile };
 }
 
 async function getNextOrderIndex(section) {
@@ -79,7 +38,7 @@ export default async function handler(req, res) {
   }
 
   // Enforce auth because this uses the service role key.
-  const auth = await requireEditor(req, res);
+  const auth = await requireRole(req, res, ["admin", "editor"]);
   if (!auth) return;
 
   try {

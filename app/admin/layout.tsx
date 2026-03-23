@@ -2,9 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabaseClient";
-
-const OWNER_EMAIL = "updaytesjournal@gmail.com";
+import { getCurrentClientAccess } from "../../lib/clientPermissions";
 
 export default function AdminLayout({
   children,
@@ -24,32 +22,13 @@ export default function AdminLayout({
     }
 
     (async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
-
-      if (!user) {
+      const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
+      if (!access.user) {
         router.replace("/admin/login");
         return;
       }
 
-      if (user.email === OWNER_EMAIL) {
-        return;
-      }
-
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("role, approved")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const allowedRoles = ["admin", "editor", "reviewer"];
-
-      if (
-        error ||
-        !profile ||
-        profile.approved !== true ||
-        !allowedRoles.includes(profile.role)
-      ) {
+      if (!access.allowed) {
         router.replace("/");
         return;
       }
