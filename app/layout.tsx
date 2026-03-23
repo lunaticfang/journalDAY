@@ -13,10 +13,15 @@ export const metadata: Metadata = {
   metadataBase: new URL(getSiteUrl()),
   applicationName: SITE_NAME,
   title: {
-    default: `${SITE_NAME} | Peer-Reviewed Journal`,
+    default: SITE_NAME,
     template: `%s | ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
+  icons: {
+    icon: "/updaytes-favicon.svg",
+    shortcut: "/updaytes-favicon.svg",
+    apple: "/updaytes-favicon.svg",
+  },
   keywords: [
     "journal",
     "peer-reviewed journal",
@@ -32,7 +37,7 @@ export const metadata: Metadata = {
     type: "website",
     siteName: SITE_NAME,
     url: getSiteUrl(),
-    title: `${SITE_NAME} | Peer-Reviewed Journal`,
+    title: SITE_NAME,
     description: SITE_DESCRIPTION,
     images: [
       {
@@ -45,7 +50,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: `${SITE_NAME} | Peer-Reviewed Journal`,
+    title: SITE_NAME,
     description: SITE_DESCRIPTION,
     images: [toAbsoluteUrl("/Website Banner.jpg")],
   },

@@ -4,19 +4,24 @@ import { SITE_NAME, buildPageMetadata, toAbsoluteUrl } from "../lib/seo";
 
 export const revalidate = 300;
 
-export const metadata = buildPageMetadata({
-  title: "Peer-Reviewed Journal",
-  description:
-    "Explore the latest UpDAYtes issue, browse peer-reviewed articles, and submit your manuscript to the journal.",
-  path: "/",
-  keywords: [
-    "peer-reviewed journal",
-    "latest issue",
-    "research articles",
-    "journal archive",
-    "manuscript submission",
-  ],
-});
+export const metadata = {
+  ...buildPageMetadata({
+    title: SITE_NAME,
+    description:
+      "Explore the latest UpDAYtes issue, browse peer-reviewed articles, and submit your manuscript to the journal.",
+    path: "/",
+    keywords: [
+      "peer-reviewed journal",
+      "latest issue",
+      "research articles",
+      "journal archive",
+      "manuscript submission",
+    ],
+  }),
+  title: {
+    absolute: SITE_NAME,
+  },
+};
 
 export default async function HomePage() {
   let latestIssue = null;
