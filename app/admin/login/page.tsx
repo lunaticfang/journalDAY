@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { getCurrentClientAccess } from "../../../lib/clientPermissions";
 
 type BootstrapStatus = {
   enabled?: boolean;
@@ -56,6 +57,14 @@ export default function AdminLoginPage() {
 
       if (error || !data.user) {
         throw error || new Error("Invalid credentials");
+      }
+
+      const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
+      if (!access.allowed) {
+        await supabase.auth.signOut();
+        throw new Error(
+          "Sign-in worked, but this account is not approved for admin access yet."
+        );
       }
 
       router.replace("/admin");

@@ -36,9 +36,11 @@ const BOARD_ATTACHMENT_STYLE: CSSProperties = {
 };
 const BOARD_PHOTO_IMAGE_STYLE: CSSProperties = {
   width: "100%",
-  aspectRatio: "4 / 5",
+  maxWidth: 164,
+  aspectRatio: "3 / 4",
   objectFit: "cover",
   display: "block",
+  margin: "0 auto 10px",
   borderRadius: 18,
   border: "1px solid rgba(60, 46, 33, 0.10)",
   background: "#ece5d9",

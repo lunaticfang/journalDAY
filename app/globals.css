@@ -3125,6 +3125,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  align-items: stretch;
   min-height: 100%;
   padding: 16px;
   border-radius: 22px;
@@ -3149,6 +3150,7 @@ body {
 
 .board-page__photo {
   margin-bottom: 2px;
+  text-align: center;
 }
 
 .board-page__body {

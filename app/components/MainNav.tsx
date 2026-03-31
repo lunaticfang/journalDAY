@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import { getCurrentClientAccess } from "../../lib/clientPermissions";
 
 type NavItem = {
   label: string;
@@ -85,8 +86,8 @@ export default function MainNav() {
     let mounted = true;
 
     async function syncAuth() {
-      const { data } = await supabase.auth.getSession();
-      const user = data.session?.user ?? null;
+      const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
+      const user = access.user ?? null;
 
       if (!mounted) return;
 
@@ -97,17 +98,8 @@ export default function MainNav() {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, approved")
-        .eq("id", user.id)
-        .maybeSingle();
-
       setIsLoggedIn(true);
-      setIsStaff(
-        profile?.approved === true &&
-          ["admin", "editor", "reviewer", "owner"].includes(profile?.role || "")
-      );
+      setIsStaff(Boolean(access.allowed));
       setLoading(false);
     }
 
