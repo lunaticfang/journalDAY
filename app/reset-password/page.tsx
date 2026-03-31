@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  PASSWORD_POLICY_HINT,
+  validatePasswordStrength,
+} from "../../lib/authSecurity";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -72,8 +76,10 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (password.length < 8) {
-      setErrorMsg("Password must be at least 8 characters.");
+    const passwordPolicyError = validatePasswordStrength(password);
+
+    if (passwordPolicyError) {
+      setErrorMsg(passwordPolicyError);
       return;
     }
 
@@ -137,6 +143,18 @@ export default function ResetPasswordPage() {
         Use the recovery link from your email once, then choose a new password here.
       </p>
 
+      <p
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          marginBottom: 20,
+          textAlign: "center",
+          lineHeight: 1.6,
+        }}
+      >
+        Password policy: {PASSWORD_POLICY_HINT}
+      </p>
+
       {errorMsg && (
         <div
           style={{
@@ -176,6 +194,7 @@ export default function ResetPasswordPage() {
             placeholder="New password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            autoComplete="new-password"
             style={inputStyle}
           />
           <input
@@ -183,6 +202,7 @@ export default function ResetPasswordPage() {
             placeholder="Confirm new password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
+            autoComplete="new-password"
             style={inputStyle}
           />
           <button

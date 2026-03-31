@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { getCurrentClientAccess } from "../../../lib/clientPermissions";
+import {
+  INVALID_CREDENTIALS_MESSAGE,
+  PASSWORD_POLICY_HINT,
+  RESET_REQUEST_MESSAGE,
+  normalizeEmail,
+  validatePasswordStrength,
+} from "../../../lib/authSecurity";
 
 type AuthMode = "signin" | "signup";
 
@@ -75,7 +82,9 @@ export default function LoginPage() {
     setStatus("");
     setErrorMsg("");
 
-    if (!email.trim() || !password) {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!normalizedEmail || !password) {
       setErrorMsg("Enter your email and password.");
       return;
     }
@@ -83,12 +92,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: normalizedEmail,
         password,
       });
 
       if (error || !data.user) {
-        throw error || new Error("Invalid email or password.");
+        throw error || new Error(INVALID_CREDENTIALS_MESSAGE);
       }
 
       const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
@@ -99,7 +108,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error("author login error:", err);
-      setErrorMsg(err.message || "Failed to sign in.");
+      setErrorMsg(INVALID_CREDENTIALS_MESSAGE);
     } finally {
       setLoading(false);
     }
@@ -110,13 +119,16 @@ export default function LoginPage() {
     setStatus("");
     setErrorMsg("");
 
-    if (!signupEmail.trim()) {
+    const normalizedEmail = normalizeEmail(signupEmail);
+    const passwordPolicyError = validatePasswordStrength(signupPassword);
+
+    if (!normalizedEmail) {
       setErrorMsg("Enter your email address.");
       return;
     }
 
-    if (signupPassword.length < 8) {
-      setErrorMsg("Password must be at least 8 characters.");
+    if (passwordPolicyError) {
+      setErrorMsg(passwordPolicyError);
       return;
     }
 
@@ -128,7 +140,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signUp({
-        email: signupEmail.trim(),
+        email: normalizedEmail,
         password: signupPassword,
         options: {
           emailRedirectTo: `${window.location.origin}/login/author`,
@@ -143,8 +155,9 @@ export default function LoginPage() {
         "Account created. Check your email once to verify it. After that, you can use your email and password to sign in normally."
       );
       setMode("signin");
-      setEmail(signupEmail.trim());
+      setEmail(normalizedEmail);
       setPassword("");
+      setSignupEmail(normalizedEmail);
       setSignupPassword("");
       setConfirmPassword("");
     } catch (err: any) {
@@ -159,14 +172,16 @@ export default function LoginPage() {
     setStatus("");
     setErrorMsg("");
 
-    if (!email.trim()) {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!normalizedEmail) {
       setErrorMsg("Enter your email address first, then use Forgot password.");
       return;
     }
 
     setRecoveryLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: `${window.location.origin}/reset-password?next=${encodeURIComponent(
           "/login/author"
         )}`,
@@ -176,9 +191,7 @@ export default function LoginPage() {
         throw error;
       }
 
-      setStatus(
-        "Password reset email sent. Open the link in your inbox to choose a new password."
-      );
+      setStatus(RESET_REQUEST_MESSAGE);
     } catch (err: any) {
       console.error("author password recovery error:", err);
       setErrorMsg(err.message || "Could not send the password reset email.");
@@ -203,6 +216,10 @@ export default function LoginPage() {
 
       <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
         Authors now sign in with email and password. Email verification is only used once when creating a new account.
+      </p>
+
+      <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
+        Password policy: {PASSWORD_POLICY_HINT}
       </p>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
@@ -283,6 +300,8 @@ export default function LoginPage() {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            spellCheck={false}
             style={inputStyle}
           />
           <input
@@ -290,6 +309,7 @@ export default function LoginPage() {
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
             style={inputStyle}
           />
           <button
@@ -334,6 +354,8 @@ export default function LoginPage() {
             placeholder="you@example.com"
             value={signupEmail}
             onChange={(e) => setSignupEmail(e.target.value)}
+            autoComplete="username"
+            spellCheck={false}
             style={inputStyle}
           />
           <input
@@ -341,6 +363,7 @@ export default function LoginPage() {
             placeholder="Create password"
             value={signupPassword}
             onChange={(e) => setSignupPassword(e.target.value)}
+            autoComplete="new-password"
             style={inputStyle}
           />
           <input
@@ -348,6 +371,7 @@ export default function LoginPage() {
             placeholder="Confirm password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
             style={inputStyle}
           />
           <button

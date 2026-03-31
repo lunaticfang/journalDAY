@@ -5,6 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentClientAccess } from "../../../lib/clientPermissions";
+import {
+  INVALID_CREDENTIALS_MESSAGE,
+  RESET_REQUEST_MESSAGE,
+  normalizeEmail,
+} from "../../../lib/authSecurity";
 
 type BootstrapStatus = {
   enabled?: boolean;
@@ -62,13 +67,14 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
+      const normalizedEmail = normalizeEmail(email);
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
       if (error || !data.user) {
-        throw error || new Error("Invalid credentials");
+        throw error || new Error(INVALID_CREDENTIALS_MESSAGE);
       }
 
       const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
@@ -82,7 +88,13 @@ export default function AdminLoginPage() {
       router.replace("/admin");
     } catch (err: any) {
       console.error("Admin login error:", err);
-      setErrorMsg(err.message || "Failed to sign in");
+      if (
+        err?.message?.includes?.("not approved for admin access yet")
+      ) {
+        setErrorMsg(err.message);
+      } else {
+        setErrorMsg(INVALID_CREDENTIALS_MESSAGE);
+      }
     } finally {
       setLoading(false);
     }
@@ -92,14 +104,16 @@ export default function AdminLoginPage() {
     setErrorMsg(null);
     setStatusMsg(null);
 
-    if (!email.trim()) {
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!normalizedEmail) {
       setErrorMsg("Enter your staff email address first, then use Forgot password.");
       return;
     }
 
     setRecoveryLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: `${window.location.origin}/reset-password?next=${encodeURIComponent(
           "/admin/login"
         )}`,
@@ -109,9 +123,7 @@ export default function AdminLoginPage() {
         throw error;
       }
 
-      setStatusMsg(
-        "Password reset email sent. Open the link in your inbox to choose a new password."
-      );
+      setStatusMsg(RESET_REQUEST_MESSAGE);
     } catch (err: any) {
       console.error("Admin password recovery error:", err);
       setErrorMsg(err.message || "Could not send the password reset email.");
@@ -209,6 +221,8 @@ export default function AdminLoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            spellCheck={false}
             style={inputStyle}
           />
         </div>
@@ -220,6 +234,7 @@ export default function AdminLoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
             style={inputStyle}
           />
         </div>

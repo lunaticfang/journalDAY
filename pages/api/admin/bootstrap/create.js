@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import {
   findAuthUserByEmail,
   getBootstrapSecret,
@@ -6,9 +7,24 @@ import {
 } from "../../../../lib/adminBootstrap";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { OWNER_ROLE } from "../../../../lib/accessControl";
+import {
+  normalizeEmail,
+  validatePasswordStrength,
+} from "../../../../lib/authSecurity";
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function secretsMatch(providedSecret, expectedSecret) {
+  const providedBuffer = Buffer.from(String(providedSecret || ""), "utf8");
+  const expectedBuffer = Buffer.from(String(expectedSecret || ""), "utf8");
+
+  if (!providedBuffer.length || providedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
 export default async function handler(req, res) {
@@ -27,12 +43,11 @@ export default async function handler(req, res) {
     }
 
     const providedSecret = String(req.body?.secret || "").trim();
-    const email = String(req.body?.email || "")
-      .trim()
-      .toLowerCase();
+    const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "");
+    const passwordPolicyError = validatePasswordStrength(password);
 
-    if (providedSecret !== getBootstrapSecret()) {
+    if (!secretsMatch(providedSecret, getBootstrapSecret())) {
       return res.status(403).json({ error: "Invalid bootstrap secret." });
     }
 
@@ -40,10 +55,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Please provide a valid email." });
     }
 
-    if (!password || password.length < 8) {
-      return res
-        .status(400)
-        .json({ error: "Password must be at least 8 characters." });
+    if (passwordPolicyError) {
+      return res.status(400).json({ error: passwordPolicyError });
     }
 
     let user = await findAuthUserByEmail(email);

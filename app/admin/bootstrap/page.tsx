@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import {
+  PASSWORD_POLICY_HINT,
+  normalizeEmail,
+  validatePasswordStrength,
+} from "../../../lib/authSecurity";
 
 type BootstrapStatus = {
   enabled: boolean;
@@ -98,13 +103,16 @@ export default function AdminBootstrapPage() {
       return;
     }
 
-    if (!email.trim()) {
+    const normalizedEmail = normalizeEmail(email);
+    const passwordPolicyError = validatePasswordStrength(password);
+
+    if (!normalizedEmail) {
       setErrorMsg("Enter an email address.");
       return;
     }
 
-    if (password.length < 8) {
-      setErrorMsg("Password must be at least 8 characters.");
+    if (passwordPolicyError) {
+      setErrorMsg(passwordPolicyError);
       return;
     }
 
@@ -123,7 +131,7 @@ export default function AdminBootstrapPage() {
         },
         body: JSON.stringify({
           secret,
-          email,
+          email: normalizedEmail,
           password,
         }),
       });
@@ -134,7 +142,7 @@ export default function AdminBootstrapPage() {
       }
 
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
@@ -189,6 +197,18 @@ export default function AdminBootstrapPage() {
       >
         This page only works before the first owner/admin exists. Use the owner
         email if you want permanent owner-level access.
+      </p>
+
+      <p
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          marginBottom: 20,
+          textAlign: "center",
+          lineHeight: 1.6,
+        }}
+      >
+        Password policy: {PASSWORD_POLICY_HINT}
       </p>
 
       {loading && <p style={{ fontSize: 13 }}>Loading bootstrap status...</p>}
@@ -274,6 +294,8 @@ export default function AdminBootstrapPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              spellCheck={false}
               style={inputStyle}
             />
           </div>
@@ -285,6 +307,7 @@ export default function AdminBootstrapPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
               style={inputStyle}
             />
           </div>
@@ -296,6 +319,7 @@ export default function AdminBootstrapPage() {
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
               style={inputStyle}
             />
           </div>
