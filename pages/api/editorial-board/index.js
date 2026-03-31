@@ -32,8 +32,25 @@ async function getNextOrderIndex(section) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "GET") {
+    try {
+      const { data, error } = await supabaseServer
+        .from("editorial_board")
+        .select("*")
+        .eq("active", true)
+        .order("order_index", { ascending: true });
+
+      if (error) throw error;
+      return res.status(200).json({ ok: true, members: data || [] });
+    } catch (err) {
+      return res
+        .status(500)
+        .json({ error: err?.message || "Unexpected error", ok: false });
+    }
+  }
+
   if (!["POST", "DELETE", "PATCH"].includes(req.method || "")) {
-    res.setHeader("Allow", "POST, DELETE, PATCH");
+    res.setHeader("Allow", "GET, POST, DELETE, PATCH");
     return res.status(405).json({ error: "Method not allowed" });
   }
 

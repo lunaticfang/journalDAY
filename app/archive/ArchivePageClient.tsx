@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "../../lib/supabaseClient";
 
 export type ArchiveIssue = {
   id: string;
@@ -63,16 +62,13 @@ export default function ArchivePageClient({
       setLoading(true);
       setErrorMsg(null);
 
-      const { data, error } = await supabase
-        .from("issues")
-        .select("*")
-        .order("published_at", { ascending: false })
-        .order("created_at", { ascending: false });
+      const resp = await fetch("/api/issues/list");
+      const json = await resp.json().catch(() => ({}));
 
-      if (error) {
-        console.error("ARCHIVE LOAD ERROR:", error);
+      if (!resp.ok) {
+        console.error("ARCHIVE LOAD ERROR:", json?.error || resp.statusText);
         if (!cancelled) {
-          setErrorMsg(error.message);
+          setErrorMsg(json?.error || "Failed to load issues.");
           setIssues([]);
           setLoading(false);
         }
@@ -80,7 +76,7 @@ export default function ArchivePageClient({
       }
 
       if (!cancelled) {
-        setIssues(mapIssueRows(data || []));
+        setIssues(mapIssueRows(json?.issues || []));
         setLoading(false);
       }
     })();

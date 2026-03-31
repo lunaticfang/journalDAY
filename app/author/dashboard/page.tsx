@@ -11,6 +11,7 @@ type Manuscript = {
   status: string | null;
   created_at: string | null;
   author_id: string | null;
+  submitter_id: string | null;
 };
 
 export default function AuthorDashboard() {
@@ -38,8 +39,8 @@ export default function AuthorDashboard() {
 
         const { data: rows, error } = await supabase
           .from("manuscripts")
-          .select("id, title, status, created_at, author_id")
-          .or(`author_id.eq.${user.id},author_id.is.null`) // TEMP: includes old rows without author_id
+          .select("id, title, status, created_at, author_id, submitter_id")
+          .or(`author_id.eq.${user.id},submitter_id.eq.${user.id}`)
           .order("created_at", { ascending: false });
 
         if (error) throw error;

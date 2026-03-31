@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
 
 type Props = {
   contentKey: string;
@@ -17,13 +16,13 @@ export default function CmsFileDisplay({ contentKey }: Props) {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("site_content")
-        .select("value")
-        .eq("key", contentKey)
-        .maybeSingle();
+      const resp = await fetch(
+        `/api/site-content/get?keys=${encodeURIComponent(contentKey)}`
+      );
+      const json = await resp.json().catch(() => ({}));
+      const value = json?.[contentKey];
 
-      if (data?.value) setFile(data.value as FileValue);
+      if (value) setFile(value as FileValue);
     })();
   }, [contentKey]);
 

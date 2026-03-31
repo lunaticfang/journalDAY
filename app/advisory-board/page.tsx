@@ -4,6 +4,11 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { getCurrentClientProfile } from "../../lib/clientPermissions";
+import {
+  deleteSiteFile,
+  fetchSiteFile,
+  saveSiteFile,
+} from "../../lib/siteFilesClient";
 
 const OwnerFileAttachment = dynamic(() => import("../components/FileAttachment"), {
   ssr: false,
@@ -74,19 +79,19 @@ export default function AdvisoryBoardPage() {
       const { data: sessionData } = await supabase.auth.getSession();
       setAuthToken(sessionData.session?.access_token ?? null);
 
-      const { data, error } = await supabase
-        .from("advisory_board")
-        .select("*")
-        .eq("active", true)
-        .order("order_index", { ascending: true });
+      const membersResp = await fetch("/api/advisory-board");
+      const membersJson = await membersResp.json().catch(() => ({}));
 
-      if (error) {
-        console.error("Load advisory board error:", error);
+      if (!membersResp.ok) {
+        console.error(
+          "Load advisory board error:",
+          membersJson?.error || membersResp.statusText
+        );
         setLoading(false);
         return;
       }
 
-      setMembers((data as Member[]) ?? []);
+      setMembers((membersJson?.members as Member[]) ?? []);
 
       try {
         const orderResp = await fetch(
@@ -438,37 +443,26 @@ export default function AdvisoryBoardPage() {
     const fromKey = `advisory_board.${fromId}.photo`;
     const toKey = `advisory_board.${toId}.photo`;
 
-    const { data: sourceRow, error: sourceErr } = await supabase
-      .from("site_files")
-      .select("file_url, file_type")
-      .eq("content_key", fromKey)
-      .maybeSingle();
+    const sourceRow = await fetchSiteFile(fromKey);
 
-    if (sourceErr || !sourceRow?.file_url) return;
+    if (!sourceRow?.fileUrl) return;
 
-    const { error: upsertErr } = await supabase
-      .from("site_files")
-      .upsert(
-        {
-          content_key: toKey,
-          file_url: sourceRow.file_url,
-          file_type: sourceRow.file_type,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "content_key" }
-      );
-
-    if (upsertErr) {
-      throw upsertErr;
+    const token = await getAuthToken();
+    if (!token) {
+      throw new Error("Please sign in again to move profile photos.");
     }
 
-    const { error: deleteErr } = await supabase
-      .from("site_files")
-      .delete()
-      .eq("content_key", fromKey);
+    await saveSiteFile({
+      contentKey: toKey,
+      fileUrl: sourceRow.fileUrl,
+      fileType: sourceRow.fileType,
+      token,
+    });
 
-    if (deleteErr) {
-      console.warn("Could not remove temporary photo link:", deleteErr);
+    try {
+      await deleteSiteFile(fromKey, token);
+    } catch (err) {
+      console.warn("Could not remove temporary photo link:", err);
     }
   };
 

@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import {
+  deleteSiteFile,
+  fetchSiteFile,
+  saveSiteFile,
+} from "../../lib/siteFilesClient";
 
 type Props = {
   contentKey: string;
@@ -38,24 +43,11 @@ export default function FileAttachment({
 
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from("site_files")
-          .select("file_url, file_type")
-          .eq("content_key", contentKey)
-          .maybeSingle();
-
-        if (error) {
-          console.error("Load attachment error:", error);
-          if (!cancelled) {
-            setFileUrl(null);
-            setFileType(null);
-          }
-          return;
-        }
+        const data = await fetchSiteFile(contentKey);
 
         if (!cancelled && data) {
-          const url = data.file_url as string | null;
-          const type = data.file_type as "image" | "pdf" | null;
+          const url = data.fileUrl as string | null;
+          const type = data.fileType as "image" | "pdf" | null;
           setFileUrl(url);
           setFileType(type);
           onFileChange?.(url, type);
@@ -119,12 +111,20 @@ export default function FileAttachment({
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      alert(
-        "You must be signed in to upload files. Please sign in (author/admin) and try again."
-      );
-      return;
-    }
+      if (!user) {
+        alert(
+          "You must be signed in to upload files. Please sign in (author/admin) and try again."
+        );
+        return;
+      }
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const accessToken = session?.access_token ?? null;
+      if (!accessToken) {
+        throw new Error("Missing session token");
+      }
 
     setUploading(true);
 
@@ -187,28 +187,12 @@ export default function FileAttachment({
 
       // Save metadata in site_files table.
       // Use onConflict to update by content_key — this requires a UNIQUE constraint on content_key.
-      const { error: dbErr } = await supabase
-        .from("site_files")
-        .upsert(
-          {
-            content_key: contentKey,
-            file_url: finalUrl,
-            file_type: type,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "content_key" }
-        );
-
-      if (dbErr) {
-        console.error("DB upsert error:", dbErr);
-        // RLS may still block this; surface helpful hint:
-        if (dbErr.code === "42501" || dbErr.message?.includes("row-level")) {
-          throw new Error(
-            "Save blocked by row-level security. Ensure you're signed-in and site_files policies allow inserts/updates for authenticated users."
-          );
-        }
-        throw dbErr;
-      }
+      await saveSiteFile({
+        contentKey,
+        fileUrl: finalUrl,
+        fileType: type,
+        token: accessToken,
+      });
 
       setFileUrl(finalUrl);
       setFileType(type);
@@ -255,12 +239,7 @@ export default function FileAttachment({
         }
       }
 
-      const { error } = await supabase
-        .from("site_files")
-        .delete()
-        .eq("content_key", contentKey);
-
-      if (error) throw error;
+      await deleteSiteFile(contentKey);
 
       setFileUrl(null);
       setFileType(null);
