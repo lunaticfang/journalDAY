@@ -30,12 +30,25 @@ type Article = {
   manuscript_id?: string | null;
 };
 
+type IssueLink = {
+  issue_id: string;
+  issue_title: string | null;
+  issue_label: string;
+  published_at: string | null;
+  is_current_issue: boolean;
+};
+
 type ManuscriptOption = {
   id: string;
   title: string | null;
   authors: string | null;
   status: string | null;
   created_at: string | null;
+  issue_links?: IssueLink[];
+  issue_count?: number;
+  is_in_any_issue?: boolean;
+  is_in_current_issue?: boolean;
+  is_in_other_issues?: boolean;
 };
 
 type ManualIssueArticle = {
@@ -67,6 +80,8 @@ type HomeIssueFeedback = {
   text: string;
 };
 
+type AttachFilter = "available" | "previous" | "all";
+
 type HomePageClientProps = {
   initialLoaded?: boolean;
   initialIssue?: Issue | null;
@@ -76,6 +91,11 @@ type HomePageClientProps = {
 };
 
 const CURRENT_ISSUE_ARTICLES_KEY_PREFIX = "home.current_issue_articles";
+const ATTACH_FILTERS: { key: AttachFilter; label: string }[] = [
+  { key: "available", label: "Ready For This Issue" },
+  { key: "previous", label: "From Previous Issues" },
+  { key: "all", label: "All Submissions" },
+];
 
 function createManualIssueArticleId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -280,6 +300,7 @@ export default function HomePage({
     null
   );
   const [attachQuery, setAttachQuery] = useState("");
+  const [attachFilter, setAttachFilter] = useState<AttachFilter>("available");
   const [attachLoading, setAttachLoading] = useState(false);
   const [attachSavingId, setAttachSavingId] = useState<string | null>(null);
   const [removeSavingId, setRemoveSavingId] = useState<string | null>(null);
@@ -383,7 +404,7 @@ export default function HomePage({
   useEffect(() => {
     let cancelled = false;
 
-    if (!isOwner) {
+    if (!isOwner || !issue?.id) {
       setManuscriptOptions([]);
       setAttachFeedback(null);
       setAttachQuery("");
@@ -401,7 +422,7 @@ export default function HomePage({
           throw new Error("Please sign in again to load available submissions.");
         }
 
-        const resp = await fetch("/api/admin/list-manuscripts", {
+        const resp = await fetch(`/api/admin/list-manuscripts?issueId=${issue.id}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -436,7 +457,7 @@ export default function HomePage({
     return () => {
       cancelled = true;
     };
-  }, [isOwner]);
+  }, [isOwner, issue?.id]);
 
   /* ---------------- Load homepage data ---------------- */
   useEffect(() => {
@@ -592,11 +613,33 @@ export default function HomePage({
     const authors = optionalArticleString(manualDraft.authors);
     const articleId = optionalArticleString(manualDraft.articleId);
     const href = optionalArticleString(manualDraft.href);
+    const internalArticleMatch = href?.match(/^\/article\/([^/?#]+)/i) || null;
 
     if (!title && !articleId && !href) {
       setManualFeedback({
         type: "error",
         text: "Enter a title, article id, or link URL before adding an article card.",
+      });
+      return;
+    }
+
+    if (articleId && !currentIssueArticleIds.has(articleId)) {
+      setManualFeedback({
+        type: "error",
+        text:
+          "That article ID is not attached to the current issue. Attach it to this issue first, then use its current issue article ID here.",
+      });
+      return;
+    }
+
+    if (
+      internalArticleMatch?.[1] &&
+      !currentIssueArticleIds.has(internalArticleMatch[1])
+    ) {
+      setManualFeedback({
+        type: "error",
+        text:
+          "That article link points to a different issue. Use a current issue article link here, or attach the submission first.",
       });
       return;
     }
@@ -694,11 +737,30 @@ export default function HomePage({
     return new Set(ids);
   }, [articles]);
 
+  const currentIssueArticleIds = useMemo(() => {
+    const ids = articles
+      .map((article) => optionalArticleString(article.id))
+      .filter((value): value is string => Boolean(value));
+
+    return new Set(ids);
+  }, [articles]);
+
   const visibleManuscriptOptions = useMemo(() => {
     const normalizedQuery = normalizeArticleString(attachQuery);
 
     return manuscriptOptions
       .filter((option) => !attachedManuscriptIds.has(option.id))
+      .filter((option) => {
+        if (attachFilter === "available") {
+          return !option.is_in_current_issue && !option.is_in_other_issues;
+        }
+
+        if (attachFilter === "previous") {
+          return Boolean(option.is_in_other_issues);
+        }
+
+        return true;
+      })
       .filter((option) => {
         if (!normalizedQuery) {
           return true;
@@ -709,6 +771,7 @@ export default function HomePage({
           option.title,
           option.authors,
           option.status,
+          ...(option.issue_links || []).map((link) => link.issue_label),
         ]
           .map((value) => normalizeArticleString(value))
           .join(" ");
@@ -716,7 +779,7 @@ export default function HomePage({
         return haystack.includes(normalizedQuery);
       })
       .slice(0, normalizedQuery ? 8 : 6);
-  }, [attachQuery, attachedManuscriptIds, manuscriptOptions]);
+  }, [attachFilter, attachQuery, attachedManuscriptIds, manuscriptOptions]);
 
   const handleAttachManuscript = async (manuscriptId: string) => {
     if (!issue?.id) {
@@ -725,6 +788,27 @@ export default function HomePage({
         text: "No current issue is available.",
       });
       return;
+    }
+
+    const selectedOption =
+      manuscriptOptions.find((option) => option.id === manuscriptId) || null;
+
+    if (selectedOption?.is_in_other_issues && typeof window !== "undefined") {
+      const linkedIssues = (selectedOption.issue_links || [])
+        .filter((link) => !link.is_current_issue)
+        .map((link) => link.issue_label)
+        .slice(0, 2)
+        .join(", ");
+
+      const confirmed = window.confirm(
+        linkedIssues
+          ? `This submission already appears in ${linkedIssues}. Attach it to the current issue as well?`
+          : "This submission already appears in a previous issue. Attach it to the current issue as well?"
+      );
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     try {
@@ -1024,14 +1108,32 @@ export default function HomePage({
                       <p>
                         This writes a real row to the <code>articles</code> table
                         for the current issue, so the homepage gets a normal
-                        article link automatically.
+                        article link automatically. By default, only submissions
+                        not already used in another issue are shown here.
                       </p>
+                    </div>
+
+                    <div className="home-issue__attach-filters">
+                      {ATTACH_FILTERS.map((filterOption) => (
+                        <button
+                          key={filterOption.key}
+                          type="button"
+                          className={
+                            attachFilter === filterOption.key
+                              ? "home-issue__attach-filter is-active"
+                              : "home-issue__attach-filter"
+                          }
+                          onClick={() => setAttachFilter(filterOption.key)}
+                        >
+                          {filterOption.label}
+                        </button>
+                      ))}
                     </div>
 
                     <div className="home-issue__attach-search">
                       <input
                         type="text"
-                        placeholder="Search submissions by title, author, status, or id"
+                        placeholder="Search submissions by title, author, status, issue, or id"
                         value={attachQuery}
                         onChange={(event) => setAttachQuery(event.target.value)}
                       />
@@ -1067,6 +1169,25 @@ export default function HomePage({
                                   </span>
                                 )}
                               </div>
+                              {option.issue_links && option.issue_links.length > 0 && (
+                                <div className="home-issue__attach-issues">
+                                  {option.issue_links.slice(0, 2).map((link) => (
+                                    <span
+                                      key={`${option.id}-${link.issue_id}`}
+                                      className="home-issue__attach-issueTag"
+                                    >
+                                      {link.is_current_issue
+                                        ? "Current issue"
+                                        : link.issue_label}
+                                    </span>
+                                  ))}
+                                  {option.issue_links.length > 2 && (
+                                    <span className="home-issue__attach-issueTag">
+                                      +{option.issue_links.length - 2} more
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             <button
@@ -1087,7 +1208,11 @@ export default function HomePage({
                         <p className="home-muted">
                           {attachQuery.trim()
                             ? "No matching submissions available to attach."
-                            : "No unattached submissions available right now."}
+                            : attachFilter === "previous"
+                            ? "No submissions from previous issues match this view."
+                            : attachFilter === "all"
+                            ? "No submissions available right now."
+                            : "No submissions are waiting for a first issue assignment right now."}
                         </p>
                       )}
                     </div>
@@ -1143,7 +1268,8 @@ export default function HomePage({
                       <p>
                         Use this only when you need a temporary display card.
                         Matching title/authors or article id merges with live
-                        articles so duplicates do not render twice.
+                        articles so duplicates do not render twice. If you use an
+                        article ID here, it must belong to the current issue.
                       </p>
                     </div>
 
@@ -1172,7 +1298,7 @@ export default function HomePage({
                       />
                       <input
                         type="text"
-                        placeholder="Article ID (optional)"
+                        placeholder="Current issue article ID (optional)"
                         value={manualDraft.articleId}
                         onChange={(event) =>
                           setManualDraft((prev) => ({
