@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { getCurrentClientProfile } from "../../lib/clientPermissions";
 
@@ -28,6 +28,19 @@ const SECTION_LABELS: Record<string, string> = {
 };
 
 const SECTION_ORDER_KEY = "advisory_board.section_order";
+const BOARD_ATTACHMENT_STYLE: CSSProperties = {
+  marginTop: 0,
+  width: "100%",
+};
+const BOARD_PHOTO_IMAGE_STYLE: CSSProperties = {
+  width: "100%",
+  aspectRatio: "4 / 5",
+  objectFit: "cover",
+  display: "block",
+  borderRadius: 18,
+  border: "1px solid rgba(60, 46, 33, 0.10)",
+  background: "#ece5d9",
+};
 
 function newTempId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -659,14 +672,12 @@ export default function AdvisoryBoardPage() {
   };
 
   if (loading) {
-    return <p style={{ padding: 40 }}>Loading advisory board…</p>;
+    return <p className="board-page__loading">Loading advisory board...</p>;
   }
 
   return (
-    <main style={{ maxWidth: 1100, margin: "40px auto", padding: "0 20px" }}>
-      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 24 }}>
-        Advisory Board
-      </h1>
+    <main className="board-page">
+      <h1 className="board-page__title">Advisory Board</h1>
 
       <datalist id="advisory-section-options">
         {sectionOptions.map((s) => (
@@ -677,19 +688,9 @@ export default function AdvisoryBoardPage() {
       </datalist>
 
       {isOwner && (
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 20,
-            alignItems: "center",
-            background: "#f8f7fb",
-            border: "1px solid #e5e7eb",
-            borderRadius: 8,
-            padding: "10px 12px",
-          }}
-        >
+        <div className="board-page__toolbar">
           <input
+            className="board-page__toolbarInput"
             placeholder="New position / section (e.g., Research Advisors)"
             value={newSectionName}
             onChange={(e) => setNewSectionName(e.target.value)}
@@ -699,26 +700,16 @@ export default function AdvisoryBoardPage() {
                 void handleAddSection();
               }
             }}
-            style={{
-              flex: 1,
-              padding: "8px 10px",
-              borderRadius: 6,
-              border: "1px solid #d1d5db",
-            }}
+            style={{ flex: 1 }}
           />
           <button
             type="button"
+            className="board-page__toolbarButton"
             onClick={handleAddSection}
             disabled={!newSectionName.trim()}
             style={{
-              background: "#6A3291",
-              color: "white",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 12px",
               cursor: newSectionName.trim() ? "pointer" : "not-allowed",
               opacity: newSectionName.trim() ? 1 : 0.6,
-              whiteSpace: "nowrap",
             }}
           >
             Add position
@@ -739,6 +730,7 @@ export default function AdvisoryBoardPage() {
         return (
           <section
             key={key}
+            className="board-page__section"
             style={{
               marginBottom: 32,
               borderRadius: 6,
@@ -758,21 +750,10 @@ export default function AdvisoryBoardPage() {
               void handleDropOnSection(key);
             }}
           >
-            <div
-              style={{
-                background: "#eeeeee",
-                padding: "8px 12px",
-                fontWeight: 700,
-                borderRadius: 4,
-                marginBottom: 12,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
+            <div className="board-page__sectionHeader">
               <span>{label}</span>
               {isOwner && (
-                <div style={{ display: "flex", gap: 6 }}>
+                <div className="board-page__sectionActions">
                   <button
                     type="button"
                     draggable
@@ -883,39 +864,20 @@ export default function AdvisoryBoardPage() {
               )}
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: 16,
-                background: "#fafafa",
-                padding: 16,
-                borderRadius: 6,
-                border: "1px solid #e5e7eb",
-              }}
-            >
+            <div className="board-page__grid">
               {showCreate && (
-                <div
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 1.4,
-                    background: "white",
-                    padding: 10,
-                    borderRadius: 4,
-                    border: "1px dashed #6A3291",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                    New member
-                  </div>
+                <div className="board-page__card board-page__card--create">
+                  <div className="board-page__cardLabel">New member</div>
 
                   {createDraftId && (
-                    <div style={{ marginBottom: 10 }}>
+                    <div className="board-page__photo">
                       <OwnerFileAttachment
                         contentKey={`advisory_board.${createDraftId}.photo`}
                         isEditor={isOwner}
                         bucketName="editorial-photos"
                         accept="image/*"
+                        containerStyle={BOARD_ATTACHMENT_STYLE}
+                        imageStyle={BOARD_PHOTO_IMAGE_STYLE}
                       />
                     </div>
                   )}
@@ -1073,23 +1035,15 @@ export default function AdvisoryBoardPage() {
               )}
 
               {sectionMembers.map((m) => (
-                <div
-                  key={m.id}
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 1.4,
-                    background: "white",
-                    padding: 10,
-                    borderRadius: 4,
-                    border: "1px solid #e5e7eb",
-                  }}
-                >
-                  <div style={{ marginBottom: 10 }}>
+                <div key={m.id} className="board-page__card">
+                  <div className="board-page__photo">
                     <OwnerFileAttachment
                       contentKey={`advisory_board.${m.id}.photo`}
                       isEditor={isOwner}
                       bucketName="editorial-photos"
                       accept="image/*"
+                      containerStyle={BOARD_ATTACHMENT_STYLE}
+                      imageStyle={BOARD_PHOTO_IMAGE_STYLE}
                     />
                   </div>
                   {editingId === m.id ? (
@@ -1258,35 +1212,30 @@ export default function AdvisoryBoardPage() {
                     </>
                   ) : (
                     <>
-                      <div style={{ fontWeight: 700 }}>
-                        {m.name}
-                        {m.degrees ? `, ${m.degrees}` : ""}
+                      <div className="board-page__body">
+                        <h3 className="board-page__name">{m.name}</h3>
+                        {m.degrees && (
+                          <p className="board-page__credential">{m.degrees}</p>
+                        )}
+                        {m.department && (
+                          <p className="board-page__meta">{m.department}</p>
+                        )}
+                        {m.institution && (
+                          <p className="board-page__meta">{m.institution}</p>
+                        )}
+                        {m.location && (
+                          <p className="board-page__meta">{m.location}</p>
+                        )}
+
+                        {m.email && (
+                          <p className="board-page__email">
+                            <a href={`mailto:${m.email}`}>{m.email}</a>
+                          </p>
+                        )}
                       </div>
 
-                      {m.department && <div>{m.department}</div>}
-                      {m.institution && <div>{m.institution}</div>}
-                      {m.location && <div>{m.location}</div>}
-
-                      {m.email && (
-                        <div style={{ marginTop: 4 }}>
-                          Email:{" "}
-                          <a
-                            href={`mailto:${m.email}`}
-                            style={{ color: "#2563eb" }}
-                          >
-                            {m.email}
-                          </a>
-                        </div>
-                      )}
-
                       {isOwner && (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            display: "flex",
-                            gap: 6,
-                          }}
-                        >
+                        <div className="board-page__cardActions">
                           <button
                             type="button"
                             onClick={() => startEdit(m)}
@@ -1331,3 +1280,4 @@ export default function AdvisoryBoardPage() {
     </main>
   );
 }
+

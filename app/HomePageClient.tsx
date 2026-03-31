@@ -1237,61 +1237,66 @@ export default function HomePage({
                 </div>
               )}
 
-              <div className="home-issue__list">
-                {currentIssueArticles.length > 0 ? (
-                  currentIssueArticles.map((article) => {
-                    const articleCard = (
-                      <>
-                        <div className="home-article__header">
-                          <h3>{article.title}</h3>
-                          {article.source !== "live" && (
-                            <span className="home-article__badge">
-                              {article.source === "manual" ? "Manual" : "Merged"}
-                            </span>
-                          )}
-                        </div>
-                        {article.authors && <p>{article.authors}</p>}
-                      </>
-                    );
+              <div className="home-issue__listBlock">
+                <div className="home-issue__listHeading">
+                  <h3>Articles in this publication</h3>
+                </div>
 
-                    if (!article.href) {
-                      return (
-                        <div
-                          key={article.key}
-                          className="home-article home-article--static"
-                        >
-                          {articleCard}
-                        </div>
+                <div className="home-issue__list">
+                  {currentIssueArticles.length > 0 ? (
+                    currentIssueArticles.map((article) => {
+                      const articleCard = (
+                        <>
+                          <div className="home-article__header">
+                            <h3>{article.title}</h3>
+                            {article.source !== "live" && (
+                              <span className="home-article__badge">
+                                {article.source === "manual" ? "Manual" : "Merged"}
+                              </span>
+                            )}
+                          </div>
+                        </>
                       );
-                    }
 
-                    if (article.external) {
+                      if (!article.href) {
+                        return (
+                          <div
+                            key={article.key}
+                            className="home-article home-article--static"
+                          >
+                            {articleCard}
+                          </div>
+                        );
+                      }
+
+                      if (article.external) {
+                        return (
+                          <a
+                            key={article.key}
+                            href={article.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="home-article"
+                          >
+                            {articleCard}
+                          </a>
+                        );
+                      }
+
                       return (
-                        <a
+                        <Link
                           key={article.key}
                           href={article.href}
-                          target="_blank"
-                          rel="noreferrer"
                           className="home-article"
                         >
                           {articleCard}
-                        </a>
+                        </Link>
                       );
-                    }
-
-                    return (
-                      <Link
-                        key={article.key}
-                        href={article.href}
-                        className="home-article"
-                      >
-                        {articleCard}
-                      </Link>
-                    );
-                  })
-                ) : (
-                  <p className="home-muted">No articles added to this issue yet.</p>
-                )}
+                    })
+                  ) : (
+                    <p className="home-muted">No articles added to this issue yet.</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
