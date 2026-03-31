@@ -16,7 +16,7 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [magicLinkLoading, setMagicLinkLoading] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -88,34 +88,35 @@ export default function AdminLoginPage() {
     }
   }
 
-  async function handleMagicLink() {
+  async function handleForgotPassword() {
     setErrorMsg(null);
     setStatusMsg(null);
 
     if (!email.trim()) {
-      setErrorMsg("Enter your email first, then we can send you an admin sign-in link.");
+      setErrorMsg("Enter your staff email address first, then use Forgot password.");
       return;
     }
 
-    setMagicLinkLoading(true);
+    setRecoveryLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/admin/login`,
-        },
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password?next=${encodeURIComponent(
+          "/admin/login"
+        )}`,
       });
 
       if (error) {
         throw error;
       }
 
-      setStatusMsg("Check your email for the admin sign-in link. Once you open it, approved staff accounts will land in the admin dashboard.");
+      setStatusMsg(
+        "Password reset email sent. Open the link in your inbox to choose a new password."
+      );
     } catch (err: any) {
-      console.error("Admin magic link error:", err);
-      setErrorMsg(err.message || "Could not send sign-in link.");
+      console.error("Admin password recovery error:", err);
+      setErrorMsg(err.message || "Could not send the password reset email.");
     } finally {
-      setMagicLinkLoading(false);
+      setRecoveryLoading(false);
     }
   }
 
@@ -167,7 +168,7 @@ export default function AdminLoginPage() {
           lineHeight: 1.6,
         }}
       >
-        Approved staff can sign in with a password or an email link. The designated owner email can use the same email-link flow as the author portal and will be routed into admin automatically.
+        Approved staff sign in with email and password. New admins are still added through the existing request and invite flow.
       </p>
 
       {errorMsg && (
@@ -216,6 +217,7 @@ export default function AdminLoginPage() {
           <label style={{ fontSize: 13 }}>Password</label>
           <input
             type="password"
+            required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             style={inputStyle}
@@ -237,30 +239,28 @@ export default function AdminLoginPage() {
             cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Signing in..." : "Sign in with password"}
+          {loading ? "Signing in..." : "Sign in"}
         </button>
       </form>
 
       <button
         type="button"
+        disabled={recoveryLoading}
         onClick={() => {
-          void handleMagicLink();
+          void handleForgotPassword();
         }}
-        disabled={magicLinkLoading}
         style={{
-          width: "100%",
-          marginTop: 10,
-          padding: "10px 0",
-          borderRadius: 6,
-          border: "1px solid #d1d5db",
-          background: "#ffffff",
-          color: "#3f3f46",
-          fontSize: 14,
+          marginTop: 12,
+          padding: 0,
+          border: "none",
+          background: "transparent",
+          color: "#6A3291",
+          fontSize: 13,
           fontWeight: 600,
-          cursor: magicLinkLoading ? "not-allowed" : "pointer",
+          cursor: recoveryLoading ? "not-allowed" : "pointer",
         }}
       >
-        {magicLinkLoading ? "Sending link..." : "Email me a sign-in link"}
+        {recoveryLoading ? "Sending reset link..." : "Forgot password?"}
       </button>
 
       <p style={{ marginTop: 10, fontSize: 13 }}>

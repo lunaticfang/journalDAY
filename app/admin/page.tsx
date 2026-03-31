@@ -83,6 +83,10 @@ function daysAgo(dateString: string | null | undefined) {
   return `${days}d`;
 }
 
+function formatFilterLabel(filterKey: string) {
+  return FILTERS.find((item) => item.key === filterKey)?.label || "All";
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [checking, setChecking] = useState(true);
@@ -276,6 +280,41 @@ export default function AdminPage() {
     return result;
   }, [queue, assignments, filter]);
 
+  const summaryCards = useMemo(() => {
+    const allManuscripts = STATUS_COLUMNS.flatMap((column) => queue[column.key] || []);
+    const activeManuscripts = allManuscripts.filter(
+      (manuscript) => manuscript.status !== "published"
+    );
+    const needsAssignment = activeManuscripts.filter(
+      (manuscript) => (assignments[manuscript.id] || []).length === 0
+    );
+    const inProcessCount =
+      (queue.under_review || []).length + (queue.revisions_requested || []).length;
+
+    return [
+      {
+        label: "Open submissions",
+        value: activeManuscripts.length,
+        note: "Everything currently in editorial circulation",
+      },
+      {
+        label: "Needs reviewer",
+        value: needsAssignment.length,
+        note: "Submissions still waiting for reviewer assignment",
+      },
+      {
+        label: "In progress",
+        value: inProcessCount,
+        note: "Under review or currently in revision rounds",
+      },
+      {
+        label: "Published",
+        value: (queue.published || []).length,
+        note: "Already placed in an issue",
+      },
+    ];
+  }, [assignments, queue]);
+
   if (checking) {
     return (
       <main className="admin-page">
@@ -312,97 +351,118 @@ export default function AdminPage() {
           <div className="admin-alert">Loading queue...</div>
         )}
 
-        <div className="admin-toolbar">
-          <div className="admin-filters">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                className={
-                  filter === f.key
-                    ? "admin-filter is-active"
-                    : "admin-filter"
-                }
-                onClick={() => setFilter(f.key)}
-                type="button"
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <div className="admin-meta">
-            {role ? <span className="admin-tag">{role}</span> : null}
-            <button
-              className="admin-btn admin-btn--ghost"
-              type="button"
-              onClick={() => {
-                loadQueue(token);
-                loadNotifications(token);
-              }}
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
+        <section className="admin-overview">
+          {summaryCards.map((card) => (
+            <article key={card.label} className="admin-stat">
+              <p className="admin-stat__label">{card.label}</p>
+              <strong className="admin-stat__value">{card.value}</strong>
+              <p className="admin-stat__note">{card.note}</p>
+            </article>
+          ))}
+        </section>
 
         <div className="admin-grid">
-          <section className="admin-queue">
-            <div className="admin-columns">
-              {STATUS_COLUMNS.map((column) => {
-                const list = filteredQueue[column.key] || [];
-                return (
-                  <div className="admin-column" key={column.key}>
-                    <div className="admin-column__header">
-                      <h2>{column.label}</h2>
-                      <span>{list.length}</span>
-                    </div>
-                    <div className="admin-column__list">
-                      {list.length === 0 && (
-                        <p className="admin-muted">No items</p>
-                      )}
-                      {list.map((m) => {
-                        const assigned = assignments[m.id] || [];
-                        const isPublished = m.status === "published";
-                        const statusValue = STATUS_OPTIONS.includes(
-                          m.status || "submitted"
-                        )
-                          ? m.status || "submitted"
-                          : "submitted";
-                        return (
-                          <article key={m.id} className="admin-card">
-                            <div className="admin-card__top">
-                              <div>
-                                <p className="admin-card__title">
-                                  {m.title || "(untitled)"}
-                                </p>
-                                <p className="admin-card__meta">
-                                  {leadAuthorName(m.authors)} - {daysAgo(m.created_at)}
-                                </p>
+          <section className="admin-main">
+            <div className="admin-toolbar">
+              <div className="admin-filters">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    className={
+                      filter === f.key
+                        ? "admin-filter is-active"
+                        : "admin-filter"
+                    }
+                    onClick={() => setFilter(f.key)}
+                    type="button"
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <div className="admin-meta">
+                {role ? <span className="admin-tag">{role}</span> : null}
+                <button
+                  className="admin-btn admin-btn--ghost"
+                  type="button"
+                  onClick={() => {
+                    loadQueue(token);
+                    loadNotifications(token);
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            <section className="admin-queue">
+              <div className="admin-board">
+                {STATUS_COLUMNS.map((column) => {
+                  const list = filteredQueue[column.key] || [];
+                  return (
+                    <section className="admin-column" key={column.key}>
+                      <div className="admin-column__header">
+                        <h2>{column.label}</h2>
+                        <span>{list.length}</span>
+                      </div>
+                      <div className="admin-column__list">
+                        {list.length === 0 && (
+                          <p className="admin-muted">No items in this stage.</p>
+                        )}
+                        {list.map((m) => {
+                          const assigned = assignments[m.id] || [];
+                          const isPublished = m.status === "published";
+                          const statusValue = STATUS_OPTIONS.includes(
+                            m.status || "submitted"
+                          )
+                            ? m.status || "submitted"
+                            : "submitted";
+                          return (
+                            <article key={m.id} className="admin-card">
+                              <div className="admin-card__top">
+                                <div>
+                                  <p className="admin-card__title">
+                                    {m.title || "(untitled)"}
+                                  </p>
+                                  <div className="admin-card__metaRow">
+                                    <span className="admin-chip">
+                                      {leadAuthorName(m.authors)}
+                                    </span>
+                                    <span className="admin-chip admin-chip--muted">
+                                      {daysAgo(m.created_at)}
+                                    </span>
+                                  </div>
+                                </div>
+                                <span
+                                  className={`admin-status admin-status--${
+                                    m.status || "submitted"
+                                  }`}
+                                >
+                                  {m.status || "submitted"}
+                                </span>
                               </div>
-                              <span className={`admin-status admin-status--${m.status || "submitted"}`}>
-                                {m.status || "submitted"}
-                              </span>
-                            </div>
 
-                            <div className="admin-card__details">
-                              <span>
-                                Reviewer assignments: {assigned.length}
-                              </span>
-                              {assigned.length === 0 && (
-                                <span className="admin-muted">Unassigned</span>
-                              )}
-                            </div>
+                              <div className="admin-card__details">
+                                <span className="admin-chip admin-chip--muted">
+                                  Reviewers: {assigned.length}
+                                </span>
+                                {assigned.length === 0 && (
+                                  <span className="admin-chip admin-chip--warning">
+                                    Unassigned
+                                  </span>
+                                )}
+                              </div>
 
-                            <div className="admin-card__actions">
-                              <Link
-                                href={`/admin/submissions/${m.id}`}
-                                className="admin-btn admin-btn--ghost"
-                              >
-                                Open
-                              </Link>
+                              <div className="admin-card__actions">
+                                <Link
+                                  href={`/admin/submissions/${m.id}`}
+                                  className="admin-btn admin-btn--ghost"
+                                >
+                                  Open
+                                </Link>
 
-                              {role !== "reviewer" && (
-                                <>
-                                  {!isPublished ? (
+                                {role !== "reviewer" &&
+                                  (!isPublished ? (
                                     <select
                                       className="admin-select"
                                       value={statusValue}
@@ -418,57 +478,89 @@ export default function AdminPage() {
                                       ))}
                                     </select>
                                   ) : (
-                                    <span className="admin-muted">Published</span>
-                                  )}
-                                </>
-                              )}
-                            </div>
-
-                            {role !== "reviewer" && (
-                              <div className="admin-card__assign">
-                                <input
-                                  className="admin-input"
-                                  placeholder="Assign reviewer email"
-                                  list={`reviewers-${m.id}`}
-                                  value={assignInputs[m.id] || ""}
-                                  onChange={(e) =>
-                                    setAssignInputs((prev) => ({
-                                      ...prev,
-                                      [m.id]: e.target.value,
-                                    }))
-                                  }
-                                />
-                                <datalist id={`reviewers-${m.id}`}>
-                                  {reviewers.map((r) => (
-                                    <option key={r.id} value={r.email || ""}>
-                                      {r.full_name || r.email}
-                                    </option>
+                                    <span className="admin-chip admin-chip--muted">
+                                      Published
+                                    </span>
                                   ))}
-                                </datalist>
-                                <button
-                                  className="admin-btn admin-btn--primary"
-                                  type="button"
-                                  onClick={() => handleAssign(m.id)}
-                                  disabled={
-                                    assigningId === m.id ||
-                                    !(assignInputs[m.id] || "").trim()
-                                  }
-                                >
-                                  {assigningId === m.id ? "Assigning..." : "Assign"}
-                                </button>
                               </div>
-                            )}
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+
+                              {role !== "reviewer" && (
+                                <div className="admin-card__assign">
+                                  <input
+                                    className="admin-input"
+                                    placeholder="Assign reviewer email"
+                                    list={`reviewers-${m.id}`}
+                                    value={assignInputs[m.id] || ""}
+                                    onChange={(e) =>
+                                      setAssignInputs((prev) => ({
+                                        ...prev,
+                                        [m.id]: e.target.value,
+                                      }))
+                                    }
+                                  />
+                                  <datalist id={`reviewers-${m.id}`}>
+                                    {reviewers.map((r) => (
+                                      <option key={r.id} value={r.email || ""}>
+                                        {r.full_name || r.email}
+                                      </option>
+                                    ))}
+                                  </datalist>
+                                  <button
+                                    className="admin-btn admin-btn--primary"
+                                    type="button"
+                                    onClick={() => handleAssign(m.id)}
+                                    disabled={
+                                      assigningId === m.id ||
+                                      !(assignInputs[m.id] || "").trim()
+                                    }
+                                  >
+                                    {assigningId === m.id ? "Assigning..." : "Assign"}
+                                  </button>
+                                </div>
+                              )}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </section>
           </section>
 
           <aside className="admin-side">
+            <div className="admin-panel">
+              <h3>Quick overview</h3>
+              <ul className="admin-list">
+                <li>
+                  <strong>Signed-in role</strong>
+                  <span>{role || "Loading..."}</span>
+                </li>
+                <li>
+                  <strong>Active filter</strong>
+                  <span>{formatFilterLabel(filter)}</span>
+                </li>
+                <li>
+                  <strong>Notifications</strong>
+                  <span>{notifications.length} recent updates</span>
+                </li>
+              </ul>
+              <div className="admin-actions">
+                <Link href="/admin/publish" className="admin-btn admin-btn--ghost">
+                  Publish issue
+                </Link>
+                <Link href="/author/submit" className="admin-btn admin-btn--primary">
+                  New submission
+                </Link>
+                {(role === "owner" || role === "admin") && (
+                  <Link href="/admin/users" className="admin-btn admin-btn--ghost">
+                    Manage access
+                  </Link>
+                )}
+              </div>
+            </div>
+
             <div className="admin-panel">
               <h3>Notifications</h3>
               {notifications.length === 0 && (

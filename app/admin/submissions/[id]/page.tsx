@@ -31,6 +31,33 @@ type ReviewerProfile = {
   full_name?: string | null;
 };
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "Unknown date";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Unknown date";
+  }
+
+  return parsed.toLocaleString();
+}
+
+function formatRelativeAge(value: string | null | undefined) {
+  if (!value) return "-";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  const diffMs = Date.now() - parsed.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "1 day ago";
+  return `${diffDays} days ago`;
+}
+
 export default function AdminSubmissionDetail() {
   const params = useParams();
   const router = useRouter();
@@ -107,6 +134,28 @@ export default function AdminSubmissionDetail() {
     });
     return map;
   }, [reviewerProfiles]);
+
+  const summaryItems = useMemo(
+    () => [
+      {
+        label: "Status",
+        value: manuscript?.status || "submitted",
+      },
+      {
+        label: "Submitted",
+        value: formatDateTime(manuscript?.created_at),
+      },
+      {
+        label: "Age",
+        value: formatRelativeAge(manuscript?.created_at),
+      },
+      {
+        label: "Reviewers",
+        value: String(reviews.length),
+      },
+    ],
+    [manuscript?.created_at, manuscript?.status, reviews.length]
+  );
 
   async function openSignedUrl(type: "pdf" | "word") {
     if (!manuscriptId) return;
@@ -243,18 +292,28 @@ export default function AdminSubmissionDetail() {
     <main className="admin-page">
       <div className="admin-shell">
         <header className="admin-detail__header">
-          <div>
-            <Link href="/admin" className="admin-link">
-              Back to inbox
-            </Link>
+          <div className="admin-detail__hero">
+            <div className="admin-detail__crumbs">
+              <Link href="/admin" className="admin-link">
+                Back to inbox
+              </Link>
+              <span className={`admin-status admin-status--${manuscript.status || "submitted"}`}>
+                {manuscript.status || "submitted"}
+              </span>
+            </div>
             <h1 className="admin-title">{manuscript.title || "(untitled)"}</h1>
             <p className="admin-subtitle">
-              Submitted {manuscript.created_at ? new Date(manuscript.created_at).toLocaleString() : "Unknown date"}
+              Submission record for editorial review, assignment, and publication decisions.
             </p>
+            <div className="admin-detail__summary">
+              {summaryItems.map((item) => (
+                <div key={item.label} className="admin-detail__summaryItem">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
           </div>
-          <span className={`admin-status admin-status--${manuscript.status || "submitted"}`}>
-            {manuscript.status || "submitted"}
-          </span>
         </header>
 
         {error && <div className="admin-alert admin-alert--error">{error}</div>}
@@ -262,6 +321,9 @@ export default function AdminSubmissionDetail() {
         <div className="admin-detail__grid">
           <section className="admin-panel">
             <h3>Submission files</h3>
+            <p className="admin-muted">
+              Open the uploaded files in a new tab for reference while reviewing.
+            </p>
             <div className="admin-actions">
               <button
                 className="admin-btn admin-btn--ghost"
@@ -284,9 +346,11 @@ export default function AdminSubmissionDetail() {
 
           <section className="admin-panel">
             <h3>Abstract</h3>
-            <p className="admin-muted">
-              {manuscript.abstract || "No abstract provided."}
-            </p>
+            <div className="admin-copyBlock">
+              <p className="admin-muted">
+                {manuscript.abstract || "No abstract provided."}
+              </p>
+            </div>
           </section>
 
           <section className="admin-panel">
@@ -298,7 +362,7 @@ export default function AdminSubmissionDetail() {
               {authors.map((a, idx) => (
                 <li key={`${a.email}-${idx}`}>
                   <strong>{a.name || "Unnamed author"}</strong>
-                  <span>{a.email}</span>
+                  <span>{a.email || "No email listed"}</span>
                   <span>{a.role || "author"}</span>
                 </li>
               ))}
@@ -307,18 +371,26 @@ export default function AdminSubmissionDetail() {
 
           <section className="admin-panel admin-panel--wide">
             <h3>Reviewer activity</h3>
+            <p className="admin-muted">
+              Track current assignments and incoming reviewer decisions here.
+            </p>
             {reviews.length === 0 && (
               <p className="admin-muted">No reviewers assigned yet.</p>
             )}
             {reviews.length > 0 && (
-              <ul className="admin-list">
+              <ul className="admin-list admin-list--timeline">
                 {reviews.map((r) => {
                   const reviewer = reviewerLookup.get(r.reviewer_id);
                   return (
                     <li key={r.id}>
                       <strong>{reviewer?.full_name || reviewer?.email || r.reviewer_id}</strong>
                       <span>{r.recommendation || "Pending review"}</span>
-                      <span>{r.decided_at ? "Decision received" : "Waiting"}</span>
+                      <span>
+                        {r.decided_at
+                          ? `Decision received ${formatDateTime(r.decided_at)}`
+                          : `Assigned ${formatDateTime(r.created_at)}`}
+                      </span>
+                      {r.notes ? <p>{r.notes}</p> : null}
                     </li>
                   );
                 })}
@@ -348,6 +420,9 @@ export default function AdminSubmissionDetail() {
           {role !== "reviewer" && (
             <section className="admin-panel admin-panel--wide">
               <h3>Editor decisions</h3>
+              <p className="admin-muted">
+                Move the manuscript through the editorial process or send it forward to issue publication.
+              </p>
               <div className="admin-actions">
                 <button
                   className="admin-btn admin-btn--ghost"
@@ -388,6 +463,9 @@ export default function AdminSubmissionDetail() {
           {role === "reviewer" && (
             <section className="admin-panel admin-panel--wide">
               <h3>Submit your review</h3>
+              <p className="admin-muted">
+                Record your recommendation for the editorial team.
+              </p>
               <div className="admin-inline-form">
                 <select
                   className="admin-select"
