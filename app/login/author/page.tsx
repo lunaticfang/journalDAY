@@ -3,12 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-
-type Profile = {
-  id: string;
-  role: "admin" | "editor" | "reviewer" | "author";
-  approved?: boolean | null;
-};
+import { getCurrentClientAccess } from "../../../lib/clientPermissions";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -16,91 +11,39 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
   const router = useRouter();
 
-  /* ------------------------------------------------------------------ */
-  /* Ensure profile exists (first login = signup)                        */
-  /* ------------------------------------------------------------------ */
-  async function ensureProfile(user: { id: string; email?: string | null }) {
-    if (!user?.id) return null;
-
-    const { data: existing } = await supabase
-      .from("profiles")
-      .select("id, role, approved")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (existing) return existing as Profile;
-
-    const { data: created } = await supabase
-      .from("profiles")
-      .upsert(
-        {
-          id: user.id,
-          email: user.email ?? null,
-          role: "author", // default
-          approved: false,
-        },
-        { onConflict: "id" }
-      )
-      .select()
-      .maybeSingle();
-
-    return created as Profile | null;
-  }
-
-  /* ------------------------------------------------------------------ */
-  /* Session check (magic link redirect)                                 */
-  /* ------------------------------------------------------------------ */
   useEffect(() => {
     let mounted = true;
 
-    async function handleSession() {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user ?? null;
+    async function routeCurrentUser() {
+      const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
 
-      if (!user) {
-        if (mounted) setChecking(false);
+      if (!mounted) return;
+
+      if (!access.user) {
+        setChecking(false);
         return;
       }
 
-      const profile = await ensureProfile(user);
-      if (!mounted) return;
-
-      const isStaff =
-        profile?.approved === true &&
-        (profile.role === "admin" ||
-          profile.role === "editor" ||
-          profile.role === "reviewer");
-
-      if (isStaff) {
+      if (access.allowed) {
         router.replace("/admin");
       } else {
-        // All normal users land here
         router.replace("/author/submit");
       }
     }
 
-    handleSession();
+    void routeCurrentUser();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const user = session?.user;
-        if (!user) return;
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session?.user) return;
 
-        const profile = await ensureProfile(user);
+      const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
 
-        const isStaff =
-          profile?.approved === true &&
-          (profile.role === "admin" ||
-            profile.role === "editor" ||
-            profile.role === "reviewer");
-
-        if (isStaff) {
-          router.replace("/admin");
-        } else {
-          router.replace("/author/submit");
-        }
+      if (access.allowed) {
+        router.replace("/admin");
+      } else {
+        router.replace("/author/submit");
       }
-    );
+    });
 
     return () => {
       mounted = false;
@@ -108,9 +51,6 @@ export default function LoginPage() {
     };
   }, [router]);
 
-  /* ------------------------------------------------------------------ */
-  /* Send magic link                                                     */
-  /* ------------------------------------------------------------------ */
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
 
@@ -119,7 +59,7 @@ export default function LoginPage() {
       return;
     }
 
-    setStatus("Sending sign-in link…");
+    setStatus("Sending sign-in link...");
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -135,13 +75,10 @@ export default function LoginPage() {
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* UI                                                                  */
-  /* ------------------------------------------------------------------ */
   if (checking) {
     return (
       <main style={{ maxWidth: 600, margin: "40px auto" }}>
-        <p>Checking session…</p>
+        <p>Checking session...</p>
       </main>
     );
   }
@@ -153,7 +90,7 @@ export default function LoginPage() {
       </h1>
 
       <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-        Sign in to submit manuscripts or manage your submissions.
+        Sign in to submit manuscripts, manage submissions, or continue to the admin dashboard if this email has staff access.
       </p>
 
       <form onSubmit={handleLogin} style={{ display: "grid", gap: 12 }}>

@@ -1,8 +1,7 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { getBearerToken } from "../../../lib/adminAuth";
 import {
-  ensureOwnerProfile,
-  getProfileByUserId,
+  ensureProfileForUser,
   isApprovedProfileRole,
   isOwnerProfile,
 } from "../../../lib/accessControl";
@@ -25,14 +24,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Invalid auth token" });
     }
 
-    let profile = await getProfileByUserId(userData.user.id, supabaseServer);
-
-    if (!profile) {
-      const syncedOwner = await ensureOwnerProfile(userData.user, supabaseServer);
-      if (syncedOwner) {
-        profile = syncedOwner;
-      }
-    }
+    const profile = await ensureProfileForUser(userData.user, supabaseServer);
 
     const requestedRoles = String(req.query.roles || "")
       .split(",")
