@@ -7,9 +7,11 @@ import { getCurrentClientProfile } from "../../lib/clientPermissions";
 export default function CmsPage({
   contentKey,
   title,
+  initialValue,
 }: {
   contentKey: string;
   title: string;
+  initialValue?: unknown;
 }) {
   const [isOwner, setIsOwner] = useState(false);
 
@@ -20,12 +22,16 @@ export default function CmsPage({
   }, []);
 
   return (
-    <main style={{ maxWidth: 900, margin: "40px auto", padding: "0 20px" }}>
-      <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 24 }}>
-        {title}
-      </h1>
+    <main className="cms-page">
+      <div className="cms-page__shell">
+        <h1 className="cms-page__title">{title}</h1>
 
-      <ContentBlock contentKey={contentKey} isEditor={isOwner} />
+        <ContentBlock
+          contentKey={contentKey}
+          isEditor={isOwner}
+          initialValue={initialValue}
+        />
+      </div>
     </main>
   );
 }

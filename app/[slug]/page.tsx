@@ -82,14 +82,11 @@ export default async function CMSPage({ params }: PageProps) {
   const html = cmsPageContentToHtml(page.content);
 
   return (
-    <main style={{ maxWidth: 900, margin: "60px auto", padding: "0 20px" }}>
-      <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 24 }}>
-        {page.title}
-      </h1>
-      <div
-        className="jd-editor"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
+    <main className="cms-page">
+      <div className="cms-page__shell">
+        <h1 className="cms-page__title">{page.title}</h1>
+        <div className="jd-editor" dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
     </main>
   );
 }

@@ -1,290 +1,70 @@
-/*
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
-
-// ---------------- styles ---------------- //
-
-const navItemStyle: React.CSSProperties = {
-  position: "relative",
-  padding: "8px 10px",
-  cursor: "pointer",
-  color: "#374151",
-  fontSize: 14,
-  whiteSpace: "nowrap",
-};
-
-const dropdownStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: 0,
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 6,
-  minWidth: 220,
-  boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
-  padding: "6px 0",
-  display: "none",
-  zIndex: 50,
-};
-
-const dropdownItemStyle: React.CSSProperties = {
-  display: "block",
-  padding: "8px 14px",
-  fontSize: 13,
-  color: "#111827",
-  textDecoration: "none",
-};
-
-// ---------------- dropdown ---------------- //
-
-function Dropdown({
-  label,
-  items,
-}: {
-  label: string;
-  items: { label: string; href: string }[];
-}) {
-  return (
-    <div
-      style={navItemStyle}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget.querySelector(".dropdown") as HTMLElement;
-        if (el) el.style.display = "block";
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget.querySelector(".dropdown") as HTMLElement;
-        if (el) el.style.display = "none";
-      }}
-    >
-      {label}
-      <div className="dropdown" style={dropdownStyle}>
-        {items.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            style={dropdownItemStyle}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "#f3f4f6")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
-            {item.label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------------- main nav ---------------- //
-
-export default function MainNav() {
-  const [user, setUser] = useState<any>(null);
-  const [isStaff, setIsStaff] = useState(false);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      const sessionUser = data?.session?.user ?? null;
-
-      setUser(sessionUser);
-
-      setIsAdmin(
-        sessionUser?.user_metadata?.is_admin === true ||
-        sessionUser?.app_metadata?.role === "admin"
-      );
-    };
-
-    getUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
-      getUser();
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function handleSignOut() {
-    await supabase.auth.signOut();
-    window.location.href = "/";
-  }
-
-  return (
-    <nav style={{ display: "flex", gap: 10, alignItems: "center" }}>
-      <Dropdown
-        label="Home"
-        items={[
-          { label: "About the Journal", href: "/about" },
-          { label: "Aim and Scope", href: "/aim-scope" },
-        ]}
-      />
-
-      <Dropdown
-        label="Editorial Board"
-        items={[
-          { label: "Editorial Board", href: "/editorial-board" },
-          { label: "Advisory Board", href: "/advisory-board" },
-        ]}
-      />
-
-      <Dropdown
-        label="Author Guidelines"
-        items={[
-          { label: "Author Contributions", href: "/instructions/contributions" },
-          { label: "Copyright Statement", href: "/instructions/copyright" },
-          { label: "Transfer of Copyright", href: "/instructions/transfer" },
-        ]}
-      />
-
-      <Dropdown
-        label="Notice Board"
-        items={[
-          { label: "Call for Papers", href: "/notices/call-for-papers" },
-        ]}
-      />
-
-      <Link href="/archive" style={navItemStyle}>Archives</Link>
-      <Link href="/author/submit" style={navItemStyle}>Submission Portal</Link>
-      <Link href="/contact" style={navItemStyle}>Contact Us</Link>
-
- {-------- AUTH SECTION (ADMIN LOGIN BASED) --------}
-
-{!user && (
-  <a
-    href="/admin/login"
-    style={{
-      ...navItemStyle,
-      border: "1px solid #e5e7eb",
-      borderRadius: 6,
-      marginLeft: 8,
-      fontWeight: 500,
-    }}
-  >
-    Sign in
-  </a>
-)}
-
-{user && (
-  <>
-    <a href="/author/dashboard" style={navItemStyle}>
-      My Submissions
-    </a>
-
-    <a
-      href="/admin"
-      style={{
-        ...navItemStyle,
-        fontWeight: 600,
-        color: "#6A3291",
-      }}
-    >
-      Admin
-    </a>
-
-    <button
-      onClick={async () => {
-        await supabase.auth.signOut();
-        window.location.href = "/";
-      }}
-      style={{
-        marginLeft: 8,
-        padding: "6px 10px",
-        fontSize: 13,
-        borderRadius: 6,
-        border: "1px solid #e5e7eb",
-        background: "white",
-        cursor: "pointer",
-      }}
-    >
-      Sign out
-    </button>
-  </>
-)}
-    </nav>
-  );
-}
-*/
-"use client";
-
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
-/* ---------------- styles ---------------- */
-
-const navItemStyle: React.CSSProperties = {
-  position: "relative",
-  padding: "8px 10px",
-  cursor: "pointer",
-  color: "#374151",
-  fontSize: 14,
-  whiteSpace: "nowrap",
+type NavItem = {
+  label: string;
+  href: string;
 };
 
-const dropdownStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "100%",
-  left: 0,
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 6,
-  minWidth: 220,
-  boxShadow: "0 10px 25px rgba(0,0,0,0.08)",
-  padding: "6px 0",
-  display: "none",
-  zIndex: 50,
-};
+const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
+  {
+    label: "Home",
+    items: [
+      { label: "About the Journal", href: "/about" },
+      { label: "Aim and Scope", href: "/aim-scope" },
+    ],
+  },
+  {
+    label: "Editorial Board",
+    items: [
+      { label: "Editorial Board", href: "/editorial-board" },
+      { label: "Advisory Board", href: "/advisory-board" },
+    ],
+  },
+  {
+    label: "Author Guidelines",
+    items: [
+      { label: "Author Contributions", href: "/instructions/contributions" },
+      { label: "Copyright Statement", href: "/instructions/copyright" },
+      { label: "Transfer of Copyright", href: "/instructions/transfer" },
+    ],
+  },
+  {
+    label: "Notice Board",
+    items: [{ label: "Call for Papers", href: "/notices/call-for-papers" }],
+  },
+];
 
-const dropdownItemStyle: React.CSSProperties = {
-  display: "block",
-  padding: "8px 14px",
-  fontSize: 13,
-  color: "#111827",
-  textDecoration: "none",
-};
+const PRIMARY_LINKS: NavItem[] = [
+  { label: "Archives", href: "/archive" },
+  { label: "Submission Portal", href: "/author/submit" },
+  { label: "Contact Us", href: "/contact" },
+];
 
-/* ---------------- dropdown ---------------- */
-
-function Dropdown({
+function DesktopDropdown({
   label,
   items,
 }: {
   label: string;
-  items: { label: string; href: string }[];
+  items: NavItem[];
 }) {
   return (
-    <div
-      style={navItemStyle}
-      onMouseEnter={(e) => {
-        const el = e.currentTarget.querySelector(".dropdown") as HTMLElement;
-        if (el) el.style.display = "block";
-      }}
-      onMouseLeave={(e) => {
-        const el = e.currentTarget.querySelector(".dropdown") as HTMLElement;
-        if (el) el.style.display = "none";
-      }}
-    >
-      {label}
-      <div className="dropdown" style={dropdownStyle}>
+    <div className="site-nav__group">
+      <button
+        type="button"
+        className="site-nav__link site-nav__trigger"
+        aria-haspopup="true"
+      >
+        {label}
+      </button>
+
+      <div className="site-nav__dropdown">
         {items.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            style={dropdownItemStyle}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "#f3f4f6")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "transparent")
-            }
-          >
+          <Link key={item.href} href={item.href} className="site-nav__dropdownLink">
             {item.label}
           </Link>
         ))}
@@ -293,12 +73,13 @@ function Dropdown({
   );
 }
 
-/* ---------------- main nav ---------------- */
-
 export default function MainNav() {
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -323,17 +104,17 @@ export default function MainNav() {
         .maybeSingle();
 
       setIsLoggedIn(true);
-      const staffRoles = ["admin", "editor", "reviewer"];
       setIsStaff(
-        profile?.approved === true && staffRoles.includes(profile?.role)
+        profile?.approved === true &&
+          ["admin", "editor", "reviewer", "owner"].includes(profile?.role || "")
       );
       setLoading(false);
     }
 
-    syncAuth();
+    void syncAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
-      syncAuth();
+      void syncAuth();
     });
 
     return () => {
@@ -342,101 +123,148 @@ export default function MainNav() {
     };
   }, []);
 
+  useEffect(() => {
+    setMobileOpen(false);
+    setOpenGroup(null);
+  }, [pathname]);
+
   async function handleLogout() {
     await supabase.auth.signOut();
     window.location.href = "/";
   }
 
-  if (loading) return null;
+  if (loading) {
+    return <div className="site-nav site-nav--loading" />;
+  }
 
   return (
-    <nav style={{ display: "flex", gap: 10, alignItems: "center" }}>
-      <Dropdown
-        label="Home"
-        items={[
-          { label: "About the Journal", href: "/about" },
-          { label: "Aim and Scope", href: "/aim-scope" },
-        ]}
-      />
+    <div className="site-nav">
+      <nav className="site-nav__desktop" aria-label="Primary">
+        {NAV_GROUPS.map((group) => (
+          <DesktopDropdown key={group.label} {...group} />
+        ))}
 
-      <Dropdown
-        label="Editorial Board"
-        items={[
-          { label: "Editorial Board", href: "/editorial-board" },
-          { label: "Advisory Board", href: "/advisory-board" },
-        ]}
-      />
+        {PRIMARY_LINKS.map((item) => (
+          <Link key={item.href} href={item.href} className="site-nav__link">
+            {item.label}
+          </Link>
+        ))}
 
-      <Dropdown
-        label="Author Guidelines"
-        items={[
-          { label: "Author Contributions", href: "/instructions/contributions" },
-          { label: "Copyright Statement", href: "/instructions/copyright" },
-          { label: "Transfer of Copyright", href: "/instructions/transfer" },
-        ]}
-      />
+        {!isLoggedIn && (
+          <Link href="/login" className="site-nav__auth">
+            Sign in
+          </Link>
+        )}
 
-      <Dropdown
-        label="Notice Board"
-        items={[
-          { label: "Call for Papers", href: "/notices/call-for-papers" },
-        ]}
-      />
+        {isLoggedIn && (
+          <Link href="/author/dashboard" className="site-nav__link">
+            My Submissions
+          </Link>
+        )}
 
-      <Link href="/archive" style={navItemStyle}>
-        Archives
-      </Link>
+        {isLoggedIn && isStaff && (
+          <Link href="/admin" className="site-nav__auth">
+            Admin
+          </Link>
+        )}
 
-      <Link href="/author/submit" style={navItemStyle}>
-        Submission Portal
-      </Link>
+        {isLoggedIn && (
+          <button type="button" className="site-nav__button" onClick={handleLogout}>
+            Logout
+          </button>
+        )}
+      </nav>
 
-      <Link href="/contact" style={navItemStyle}>
-        Contact Us
-      </Link>
+      <button
+        type="button"
+        className="site-nav__toggle"
+        aria-expanded={mobileOpen}
+        aria-controls="site-nav-mobile"
+        onClick={() => setMobileOpen((prev) => !prev)}
+      >
+        <span />
+        <span />
+        <span />
+        <span className="site-nav__toggleLabel">
+          {mobileOpen ? "Close" : "Menu"}
+        </span>
+      </button>
 
-      {/* ---------- AUTH SECTION ---------- */}
+      {mobileOpen && (
+        <nav id="site-nav-mobile" className="site-nav__mobile" aria-label="Mobile">
+          <div className="site-nav__mobilePanel">
+            {NAV_GROUPS.map((group) => {
+              const isOpen = openGroup === group.label;
 
-      {!isLoggedIn && (
-  <Link
-    href="/login"
-    style={{
-      ...navItemStyle,
-      fontWeight: 600,
-      color: "#6A3291",
-    }}
-  >
-    Sign in
-  </Link>
-)}
+              return (
+                <div key={group.label} className="site-nav__mobileGroup">
+                  <button
+                    type="button"
+                    className="site-nav__mobileTrigger"
+                    aria-expanded={isOpen}
+                    onClick={() =>
+                      setOpenGroup((prev) => (prev === group.label ? null : group.label))
+                    }
+                  >
+                    <span>{group.label}</span>
+                    <span>{isOpen ? "-" : "+"}</span>
+                  </button>
 
+                  {isOpen && (
+                    <div className="site-nav__mobileLinks">
+                      {group.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="site-nav__mobileLink"
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
-      {isLoggedIn && isStaff && (
-        <Link
-          href="/admin"
-          style={{
-            ...navItemStyle,
-            fontWeight: 600,
-            color: "#6A3291",
-          }}
-        >
-          Admin
-        </Link>
+            <div className="site-nav__mobileLinks site-nav__mobileLinks--flat">
+              {PRIMARY_LINKS.map((item) => (
+                <Link key={item.href} href={item.href} className="site-nav__mobileLink">
+                  {item.label}
+                </Link>
+              ))}
+
+              {isLoggedIn && (
+                <Link href="/author/dashboard" className="site-nav__mobileLink">
+                  My Submissions
+                </Link>
+              )}
+
+              {isLoggedIn && isStaff && (
+                <Link href="/admin" className="site-nav__mobileLink site-nav__mobileLink--accent">
+                  Admin
+                </Link>
+              )}
+
+              {!isLoggedIn && (
+                <Link href="/login" className="site-nav__mobileLink site-nav__mobileLink--accent">
+                  Sign in
+                </Link>
+              )}
+
+              {isLoggedIn && (
+                <button
+                  type="button"
+                  className="site-nav__mobileButton"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </button>
+              )}
+            </div>
+          </div>
+        </nav>
       )}
-
-      {isLoggedIn && (
-        <button
-          onClick={handleLogout}
-          style={{
-            ...navItemStyle,
-            background: "none",
-            border: "none",
-            fontWeight: 500,
-          }}
-        >
-          Logout
-        </button>
-      )}
-    </nav>
+    </div>
   );
 }

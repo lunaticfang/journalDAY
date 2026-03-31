@@ -1,5 +1,6 @@
 import CmsPage from "../../components/CmsPage";
 import { buildPageMetadata } from "../../../lib/seo";
+import { getSiteContentEntries } from "../../../lib/publicContent";
 
 export const metadata = buildPageMetadata({
   title: "Copyright Statement",
@@ -8,6 +9,16 @@ export const metadata = buildPageMetadata({
   path: "/instructions/copyright",
 });
 
-export default function CopyrightPage() {
-  return <CmsPage contentKey="page.copyright" title="Copyright Statement" />;
+export default async function CopyrightPage() {
+  const content = (await getSiteContentEntries([
+    "page.copyright",
+  ])) as Record<string, unknown>;
+
+  return (
+    <CmsPage
+      contentKey="page.copyright"
+      title="Copyright Statement"
+      initialValue={content["page.copyright"]}
+    />
+  );
 }

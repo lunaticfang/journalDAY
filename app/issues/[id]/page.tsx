@@ -14,6 +14,27 @@ type PageProps = {
   params: Promise<{ id: string }>;
 };
 
+type IssueRecord = {
+  id: string;
+  title: string | null;
+  volume: string | null;
+  issue_number: number | null;
+  published_at: string | null;
+  cover_url: string | null;
+  pdf_path: string | null;
+};
+
+type ArticleRecord = {
+  id: string;
+  issue_id: string | null;
+  title: string | null;
+  abstract: string | null;
+  authors: string | null;
+  pdf_path: string | null;
+  manuscript_id?: string | null;
+  created_at?: string | null;
+};
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
@@ -67,9 +88,13 @@ export default async function IssuePage({ params }: PageProps) {
   const { id } = await params;
 
   let structuredData = null;
+  let initialIssue: IssueRecord | null = null;
+  let initialArticles: ArticleRecord[] = [];
 
   try {
     const { issue, articles } = await getIssueWithArticles(id);
+    initialIssue = issue || null;
+    initialArticles = articles || [];
 
     if (issue) {
       structuredData = {
@@ -105,7 +130,7 @@ export default async function IssuePage({ params }: PageProps) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
         />
       )}
-      <IssuePageClient />
+      <IssuePageClient initialIssue={initialIssue} initialArticles={initialArticles} />
     </>
   );
 }

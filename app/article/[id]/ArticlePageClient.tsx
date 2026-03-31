@@ -22,6 +22,12 @@ type Issue = {
   issue_number: number | null;
   published_at: string | null;
   pdf_path?: string | null;
+  cover_url?: string | null;
+};
+
+type ArticlePageClientProps = {
+  initialArticle?: Article | null;
+  initialIssue?: Issue | null;
 };
 
 function formatAuthors(authors: string | null) {
@@ -60,14 +66,17 @@ function buildIssueLabel(issue: Issue | null) {
     .join(" | ");
 }
 
-export default function ArticlePage() {
+export default function ArticlePage({
+  initialArticle = null,
+  initialIssue = null,
+}: ArticlePageClientProps) {
   const params = useParams();
   const router = useRouter();
   const articleId = (params?.id as string) || "";
 
-  const [article, setArticle] = useState<Article | null>(null);
-  const [issue, setIssue] = useState<Issue | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [article, setArticle] = useState<Article | null>(initialArticle);
+  const [issue, setIssue] = useState<Issue | null>(initialIssue);
+  const [loading, setLoading] = useState(!initialArticle);
   const [errorMsg, setErrorMsg] = useState("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -83,27 +92,38 @@ export default function ArticlePage() {
       }
 
       try {
-        setLoading(true);
+        if (!initialArticle) {
+          setLoading(true);
+        }
         setErrorMsg("");
         setPdfError(null);
         setPdfUrl(null);
 
-        const resp = await fetch(`/api/articles/${articleId}`);
-        const json = await resp.json().catch(() => ({}));
+        let loadedArticle = initialArticle;
+        let loadedIssue = initialIssue;
 
-        if (!resp.ok) {
-          throw new Error(json?.error || "Failed to load article.");
+        if (!loadedArticle) {
+          const resp = await fetch(`/api/articles/${articleId}`);
+          const json = await resp.json().catch(() => ({}));
+
+          if (!resp.ok) {
+            throw new Error(json?.error || "Failed to load article.");
+          }
+
+          if (cancelled) return;
+
+          loadedArticle = json.article as Article;
+          loadedIssue = (json.issue || null) as Issue | null;
         }
-
-        if (cancelled) return;
-
-        const loadedArticle = json.article as Article;
-        const loadedIssue = (json.issue || null) as Issue | null;
 
         setArticle(loadedArticle);
         setIssue(loadedIssue);
 
-        const manuscriptId = loadedArticle.manuscript_id || loadedArticle.id;
+        const manuscriptId = loadedArticle?.manuscript_id || loadedArticle?.id;
+
+        if (!loadedArticle || !manuscriptId) {
+          throw new Error("Article data is incomplete.");
+        }
 
         try {
           const signedResp = await fetch(
@@ -156,7 +176,7 @@ export default function ArticlePage() {
     return () => {
       cancelled = true;
     };
-  }, [articleId]);
+  }, [articleId, initialArticle, initialIssue]);
 
   const issueLabel = buildIssueLabel(issue);
   const pubDate = issue?.published_at

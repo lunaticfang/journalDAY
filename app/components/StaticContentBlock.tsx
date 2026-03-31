@@ -6,13 +6,21 @@ import { siteContentValueToHtml } from "../../lib/siteContent";
 type Props = {
   contentKey: string;
   placeholder?: string;
+  initialValue?: unknown;
 };
 
 export default function StaticContentBlock({
   contentKey,
   placeholder = "",
+  initialValue = null,
 }: Props) {
-  const [html, setHtml] = useState(() => siteContentValueToHtml(null, placeholder));
+  const [html, setHtml] = useState(() =>
+    siteContentValueToHtml(initialValue, placeholder)
+  );
+
+  useEffect(() => {
+    setHtml(siteContentValueToHtml(initialValue, placeholder));
+  }, [initialValue, placeholder]);
 
   useEffect(() => {
     let cancelled = false;

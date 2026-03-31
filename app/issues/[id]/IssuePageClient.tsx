@@ -25,6 +25,11 @@ type Article = {
   created_at?: string | null;
 };
 
+type IssuePageClientProps = {
+  initialIssue?: Issue | null;
+  initialArticles?: Article[];
+};
+
 function formatAuthors(raw: string | null) {
   if (!raw) return "";
 
@@ -50,7 +55,10 @@ function formatAuthors(raw: string | null) {
   return raw;
 }
 
-export default function IssuePage() {
+export default function IssuePage({
+  initialIssue = null,
+  initialArticles = [],
+}: IssuePageClientProps) {
   const params = useParams<{ id: string }>();
   const rawId = params?.id;
   const id =
@@ -60,9 +68,9 @@ export default function IssuePage() {
       ? rawId[0]
       : undefined;
 
-  const [issue, setIssue] = useState<Issue | null>(null);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [issue, setIssue] = useState<Issue | null>(initialIssue);
+  const [articles, setArticles] = useState<Article[]>(initialArticles);
+  const [loading, setLoading] = useState(!initialIssue);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
@@ -95,7 +103,9 @@ export default function IssuePage() {
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      if (!initialIssue) {
+        setLoading(true);
+      }
       setErrorMsg(null);
 
       if (!id) {
@@ -105,16 +115,18 @@ export default function IssuePage() {
       }
 
       try {
-        const resp = await fetch(`/api/issues/${id}`);
-        const json = await resp.json().catch(() => ({}));
+        if (!initialIssue) {
+          const resp = await fetch(`/api/issues/${id}`);
+          const json = await resp.json().catch(() => ({}));
 
-        if (!resp.ok) {
-          throw new Error(json?.error || "Failed to load publication.");
-        }
+          if (!resp.ok) {
+            throw new Error(json?.error || "Failed to load publication.");
+          }
 
-        if (!cancelled) {
-          setIssue((json?.issue || null) as Issue | null);
-          setArticles((json?.articles || []) as Article[]);
+          if (!cancelled) {
+            setIssue((json?.issue || null) as Issue | null);
+            setArticles((json?.articles || []) as Article[]);
+          }
         }
       } catch (err) {
         console.error("IssuePage load error:", err);
@@ -135,7 +147,7 @@ export default function IssuePage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, initialIssue]);
 
   const pubDate = issue?.published_at
     ? new Date(issue.published_at).toLocaleDateString("en-US", {

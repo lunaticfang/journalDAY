@@ -69,52 +69,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body
-        style={{
-          margin: 0,
-          fontFamily:
-            "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-          backgroundColor: "#f9fafb",
-          color: "#111827",
-        }}
-      >
-        <div
-          style={{
-            minHeight: "100vh",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <header
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 20,
-              backdropFilter: "blur(10px)",
-              backgroundColor: "rgba(255,255,255,0.9)",
-              borderBottom: "1px solid #e5e7eb",
-            }}
-          >
-            <div
-              style={{
-                maxWidth: 1120,
-                margin: "0 auto",
-                padding: "12px 20px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <Link
-                href="/"
-                style={{
-                  fontSize: 20,
-                  fontWeight: 700,
-                  letterSpacing: "0.03em",
-                  textDecoration: "none",
-                  color: "#111827",
-                }}
-              >
+      <body className="site-body">
+        <div className="site-root">
+          <header className="site-header">
+            <div className="site-shell site-header__inner">
+              <Link href="/" className="site-brand">
                 UpDAYtes
               </Link>
 
@@ -122,25 +81,13 @@ export default function RootLayout({
             </div>
           </header>
 
-          <main
-            style={{
-              flex: 1,
-              padding: "32px 16px 40px",
-            }}
-          >
-            <div style={{ maxWidth: 1120, margin: "0 auto" }}>{children}</div>
+          <main className="site-main">
+            <div className="site-shell">{children}</div>
           </main>
 
-          <footer
-            style={{
-              borderTop: "1px solid #e5e7eb",
-              padding: "12px 20px",
-              fontSize: 12,
-              color: "#6b7280",
-            }}
-          >
-            <div style={{ maxWidth: 1120, margin: "0 auto" }}>
-              © {new Date().getFullYear()} UpDAYtes · All rights reserved.
+          <footer className="site-footer">
+            <div className="site-shell">
+              Copyright {new Date().getFullYear()} UpDAYtes. All rights reserved.
             </div>
           </footer>
         </div>
@@ -148,4 +95,3 @@ export default function RootLayout({
     </html>
   );
 }
-

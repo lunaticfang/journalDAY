@@ -1,5 +1,6 @@
 import CmsPage from "../components/CmsPage";
 import { buildPageMetadata } from "../../lib/seo";
+import { getSiteContentEntries } from "../../lib/publicContent";
 
 export const metadata = buildPageMetadata({
   title: "Aim & Scope",
@@ -8,6 +9,16 @@ export const metadata = buildPageMetadata({
   path: "/aim-scope",
 });
 
-export default function AimScopePage() {
-  return <CmsPage contentKey="page.aim_scope" title="Aim & Scope" />;
+export default async function AimScopePage() {
+  const content = (await getSiteContentEntries([
+    "page.aim_scope",
+  ])) as Record<string, unknown>;
+
+  return (
+    <CmsPage
+      contentKey="page.aim_scope"
+      title="Aim & Scope"
+      initialValue={content["page.aim_scope"]}
+    />
+  );
 }

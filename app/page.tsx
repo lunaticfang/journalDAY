@@ -1,8 +1,31 @@
 import HomePageClient from "./HomePageClient";
-import { getLatestIssueWithArticles } from "../lib/publicContent";
+import { getLatestIssueWithArticles, getSiteContentEntries } from "../lib/publicContent";
 import { SITE_NAME, buildPageMetadata, toAbsoluteUrl } from "../lib/seo";
 
 export const revalidate = 300;
+const HOME_CONTENT_KEYS = [
+  "home.editor_in_chief",
+  "home.hero_title",
+  "home.hero_subtitle",
+];
+const CURRENT_ISSUE_ARTICLES_KEY_PREFIX = "home.current_issue_articles";
+
+type HomeIssue = {
+  id: string;
+  title: string | null;
+  volume: string | null;
+  issue_number: number | null;
+  published_at: string | null;
+  cover_url: string | null;
+  pdf_path?: string | null;
+};
+
+type HomeArticle = {
+  id: string;
+  title: string | null;
+  authors: string | null;
+  manuscript_id?: string | null;
+};
 
 export const metadata = {
   ...buildPageMetadata({
@@ -24,11 +47,25 @@ export const metadata = {
 };
 
 export default async function HomePage() {
-  let latestIssue = null;
+  let latestIssue: HomeIssue | null = null;
+  let latestArticles: HomeArticle[] = [];
+  let initialContent: Record<string, unknown> = {};
+  let initialManualArticlesValue = null;
 
   try {
-    const { issue } = await getLatestIssueWithArticles();
+    const { issue, articles } = await getLatestIssueWithArticles();
     latestIssue = issue;
+    latestArticles = articles || [];
+
+    const contentKeys = latestIssue?.id
+      ? [...HOME_CONTENT_KEYS, `${CURRENT_ISSUE_ARTICLES_KEY_PREFIX}.${latestIssue.id}`]
+      : HOME_CONTENT_KEYS;
+
+    initialContent = await getSiteContentEntries(contentKeys);
+    if (latestIssue?.id) {
+      initialManualArticlesValue =
+        initialContent[`${CURRENT_ISSUE_ARTICLES_KEY_PREFIX}.${latestIssue.id}`] ?? null;
+    }
   } catch (err) {
     console.error("HomePage structured data load error:", err);
   }
@@ -78,7 +115,13 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <HomePageClient />
+      <HomePageClient
+        initialLoaded
+        initialIssue={latestIssue}
+        initialArticles={latestArticles}
+        initialManualArticlesValue={initialManualArticlesValue}
+        initialContent={initialContent}
+      />
     </>
   );
 }

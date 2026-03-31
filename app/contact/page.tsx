@@ -1,5 +1,6 @@
 import CmsPage from "../components/CmsPage";
 import { buildPageMetadata } from "../../lib/seo";
+import { getSiteContentEntries } from "../../lib/publicContent";
 
 export const metadata = buildPageMetadata({
   title: "Contact Us",
@@ -8,6 +9,16 @@ export const metadata = buildPageMetadata({
   path: "/contact",
 });
 
-export default function ContactPage() {
-  return <CmsPage contentKey="page.contact" title="Contact Us" />;
+export default async function ContactPage() {
+  const content = (await getSiteContentEntries([
+    "page.contact",
+  ])) as Record<string, unknown>;
+
+  return (
+    <CmsPage
+      contentKey="page.contact"
+      title="Contact Us"
+      initialValue={content["page.contact"]}
+    />
+  );
 }

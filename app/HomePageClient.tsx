@@ -67,6 +67,14 @@ type HomeIssueFeedback = {
   text: string;
 };
 
+type HomePageClientProps = {
+  initialLoaded?: boolean;
+  initialIssue?: Issue | null;
+  initialArticles?: Article[];
+  initialManualArticlesValue?: unknown;
+  initialContent?: Record<string, unknown>;
+};
+
 const CURRENT_ISSUE_ARTICLES_KEY_PREFIX = "home.current_issue_articles";
 
 function createManualIssueArticleId() {
@@ -239,14 +247,22 @@ function mergeCurrentIssueArticles(
   return merged;
 }
 
-export default function HomePage() {
-  const [issue, setIssue] = useState<Issue | null>(null);
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [manualArticles, setManualArticles] = useState<ManualIssueArticle[]>([]);
+export default function HomePage({
+  initialLoaded = false,
+  initialIssue = null,
+  initialArticles = [],
+  initialManualArticlesValue = null,
+  initialContent = {},
+}: HomePageClientProps) {
+  const [issue, setIssue] = useState<Issue | null>(initialIssue);
+  const [articles, setArticles] = useState<Article[]>(initialArticles);
+  const [manualArticles, setManualArticles] = useState<ManualIssueArticle[]>(
+    () => parseManualIssueArticles(initialManualArticlesValue)
+  );
   const [manuscriptOptions, setManuscriptOptions] = useState<ManuscriptOption[]>(
     []
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialLoaded);
 
   const [isOwner, setIsOwner] = useState(false);
 
@@ -269,6 +285,8 @@ export default function HomePage() {
   const [removeSavingId, setRemoveSavingId] = useState<string | null>(null);
   const [attachFeedback, setAttachFeedback] =
     useState<HomeIssueFeedback | null>(null);
+
+  const initialContentMap = initialContent || {};
 
   const handleBannerChange = useCallback(
     (url: string | null) => {
@@ -327,6 +345,10 @@ export default function HomePage() {
     },
     []
   );
+
+  useEffect(() => {
+    resolveCoverFromIssue(initialIssue);
+  }, [initialIssue, resolveCoverFromIssue]);
 
   /* ---------------- Auth + ownership ---------------- */
   useEffect(() => {
@@ -418,6 +440,10 @@ export default function HomePage() {
 
   /* ---------------- Load homepage data ---------------- */
   useEffect(() => {
+    if (initialLoaded) {
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -479,7 +505,7 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [resolveCoverFromIssue]);
+  }, [initialLoaded, resolveCoverFromIssue]);
 
   const handleIssueCoverChange = useCallback(
     async (url: string | null) => {
@@ -848,6 +874,7 @@ export default function HomePage() {
             contentKey="home.editor_in_chief"
             isEditor={isOwner}
             placeholder="Editor-in-Chief: Prof. (Dr.) Satinath Mukhopadhyay"
+            initialValue={initialContentMap["home.editor_in_chief"]}
           />
         </div>
       </section>
@@ -864,6 +891,7 @@ export default function HomePage() {
                   contentKey="home.hero_title"
                   isEditor={isOwner}
                   placeholder="Advancing knowledge, awareness..."
+                  initialValue={initialContentMap["home.hero_title"]}
                 />
               </div>
 
@@ -872,6 +900,7 @@ export default function HomePage() {
                   contentKey="home.hero_subtitle"
                   isEditor={isOwner}
                   placeholder="UpDAYtes brings together peer-reviewed research..."
+                  initialValue={initialContentMap["home.hero_subtitle"]}
                 />
               </div>
 

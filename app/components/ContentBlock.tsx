@@ -7,6 +7,7 @@ type Props = {
   contentKey: string;
   isEditor: boolean;
   placeholder?: string;
+  initialValue?: unknown;
 };
 
 const LazyEditableBlock = dynamic(() => import("./EditableBlock"), {
@@ -19,6 +20,7 @@ export default function ContentBlock(props: Props) {
       <StaticContentBlock
         contentKey={props.contentKey}
         placeholder={props.placeholder}
+        initialValue={props.initialValue}
       />
     );
   }

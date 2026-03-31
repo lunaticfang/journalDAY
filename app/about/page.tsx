@@ -1,5 +1,6 @@
 import CmsPage from "../components/CmsPage";
 import { buildPageMetadata } from "../../lib/seo";
+import { getSiteContentEntries } from "../../lib/publicContent";
 
 export const metadata = buildPageMetadata({
   title: "About the Journal",
@@ -8,6 +9,16 @@ export const metadata = buildPageMetadata({
   path: "/about",
 });
 
-export default function AboutPage() {
-  return <CmsPage contentKey="page.about" title="About the Journal" />;
+export default async function AboutPage() {
+  const content = (await getSiteContentEntries([
+    "page.about",
+  ])) as Record<string, unknown>;
+
+  return (
+    <CmsPage
+      contentKey="page.about"
+      title="About the Journal"
+      initialValue={content["page.about"]}
+    />
+  );
 }
