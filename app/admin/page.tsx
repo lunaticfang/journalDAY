@@ -36,12 +36,36 @@ type Notification = {
 };
 
 const STATUS_COLUMNS = [
-  { key: "submitted", label: "New" },
-  { key: "under_review", label: "In Review" },
-  { key: "revisions_requested", label: "Revisions Requested" },
-  { key: "accepted", label: "Accepted" },
-  { key: "rejected", label: "Rejected" },
-  { key: "published", label: "Published" },
+  {
+    key: "submitted",
+    label: "New",
+    description: "Fresh submissions waiting for the first editorial pass.",
+  },
+  {
+    key: "under_review",
+    label: "In Review",
+    description: "Active manuscripts currently with reviewers or editors.",
+  },
+  {
+    key: "revisions_requested",
+    label: "Revisions Requested",
+    description: "Work that is back with the author for improvement.",
+  },
+  {
+    key: "accepted",
+    label: "Accepted",
+    description: "Approved work ready for issue planning and final checks.",
+  },
+  {
+    key: "rejected",
+    label: "Rejected",
+    description: "Completed decisions that are now part of the record.",
+  },
+  {
+    key: "published",
+    label: "Published",
+    description: "Articles already placed into an issue and out of the queue.",
+  },
 ];
 
 const STATUS_OPTIONS = [
@@ -85,6 +109,10 @@ function daysAgo(dateString: string | null | undefined) {
 
 function formatFilterLabel(filterKey: string) {
   return FILTERS.find((item) => item.key === filterKey)?.label || "All";
+}
+
+function formatStatusLabel(status: string | null | undefined) {
+  return String(status || "submitted").replace(/_/g, " ");
 }
 
 export default function AdminPage() {
@@ -315,6 +343,22 @@ export default function AdminPage() {
     ];
   }, [assignments, queue]);
 
+  const visibleQueueCount = useMemo(() => {
+    return STATUS_COLUMNS.reduce(
+      (count, column) => count + (filteredQueue[column.key] || []).length,
+      0
+    );
+  }, [filteredQueue]);
+
+  const visibleUnassignedCount = useMemo(() => {
+    return STATUS_COLUMNS.reduce((count, column) => {
+      const columnCount = (filteredQueue[column.key] || []).filter(
+        (manuscript) => (assignments[manuscript.id] || []).length === 0
+      ).length;
+      return count + columnCount;
+    }, 0);
+  }, [assignments, filteredQueue]);
+
   if (checking) {
     return (
       <main className="admin-page">
@@ -329,20 +373,28 @@ export default function AdminPage() {
     <main className="admin-page">
       <div className="admin-shell">
         <header className="admin-header">
-          <div>
+          <div className="admin-header__intro">
             <p className="admin-eyebrow">Submission Inbox</p>
             <h1 className="admin-title">Editorial Control Center</h1>
             <p className="admin-subtitle">
-              Review, route, and publish submissions with fewer clicks.
+              A calmer view of the full editorial pipeline, from intake to issue
+              publication.
             </p>
           </div>
-          <div className="admin-header__actions">
-            <Link href="/admin/publish" className="admin-btn admin-btn--ghost">
-              Publish issue
-            </Link>
-            <Link href="/author/submit" className="admin-btn admin-btn--primary">
-              New submission
-            </Link>
+          <div className="admin-header__aside">
+            <div className="admin-contextCard">
+              <span className="admin-tag">{role || "staff"}</span>
+              <strong>{visibleQueueCount} manuscripts in view</strong>
+              <p>{visibleUnassignedCount} still need reviewer coverage</p>
+            </div>
+            <div className="admin-header__actions">
+              <Link href="/admin/publish" className="admin-btn admin-btn--ghost">
+                Publish issue
+              </Link>
+              <Link href="/author/submit" className="admin-btn admin-btn--primary">
+                New submission
+              </Link>
+            </div>
           </div>
         </header>
 
@@ -363,51 +415,71 @@ export default function AdminPage() {
 
         <div className="admin-grid">
           <section className="admin-main">
-            <div className="admin-toolbar">
-              <div className="admin-filters">
-                {FILTERS.map((f) => (
+            <section className="admin-surface">
+              <div className="admin-sectionHead">
+                <div>
+                  <p className="admin-sectionKicker">Queue view</p>
+                  <h2 className="admin-sectionTitle">Manuscript pipeline</h2>
+                </div>
+                <p className="admin-sectionNote">
+                  Showing {visibleQueueCount} manuscripts in the{" "}
+                  {formatFilterLabel(filter).toLowerCase()} view.
+                </p>
+              </div>
+
+              <div className="admin-toolbar">
+                <div className="admin-filters">
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      className={
+                        filter === f.key
+                          ? "admin-filter is-active"
+                          : "admin-filter"
+                      }
+                      onClick={() => setFilter(f.key)}
+                      type="button"
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="admin-meta">
                   <button
-                    key={f.key}
-                    className={
-                      filter === f.key
-                        ? "admin-filter is-active"
-                        : "admin-filter"
-                    }
-                    onClick={() => setFilter(f.key)}
+                    className="admin-btn admin-btn--ghost"
                     type="button"
+                    onClick={() => {
+                      loadQueue(token);
+                      loadNotifications(token);
+                    }}
                   >
-                    {f.label}
+                    Refresh queue
                   </button>
-                ))}
+                </div>
               </div>
-              <div className="admin-meta">
-                {role ? <span className="admin-tag">{role}</span> : null}
-                <button
-                  className="admin-btn admin-btn--ghost"
-                  type="button"
-                  onClick={() => {
-                    loadQueue(token);
-                    loadNotifications(token);
-                  }}
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
+            </section>
 
             <section className="admin-queue">
               <div className="admin-board">
                 {STATUS_COLUMNS.map((column) => {
                   const list = filteredQueue[column.key] || [];
                   return (
-                    <section className="admin-column" key={column.key}>
+                    <section
+                      className={`admin-column admin-column--${column.key}`}
+                      key={column.key}
+                    >
                       <div className="admin-column__header">
-                        <h2>{column.label}</h2>
-                        <span>{list.length}</span>
+                        <div className="admin-column__heading">
+                          <h2>{column.label}</h2>
+                          <p>{column.description}</p>
+                        </div>
+                        <span className="admin-column__count">{list.length}</span>
                       </div>
                       <div className="admin-column__list">
                         {list.length === 0 && (
-                          <p className="admin-muted">No items in this stage.</p>
+                          <div className="admin-emptyState">
+                            <p>No manuscripts in this stage right now.</p>
+                          </div>
                         )}
                         {list.map((m) => {
                           const assigned = assignments[m.id] || [];
@@ -420,37 +492,34 @@ export default function AdminPage() {
                           return (
                             <article key={m.id} className="admin-card">
                               <div className="admin-card__top">
-                                <div>
+                                <div className="admin-card__headline">
                                   <p className="admin-card__title">
                                     {m.title || "(untitled)"}
                                   </p>
-                                  <div className="admin-card__metaRow">
-                                    <span className="admin-chip">
-                                      {leadAuthorName(m.authors)}
-                                    </span>
-                                    <span className="admin-chip admin-chip--muted">
-                                      {daysAgo(m.created_at)}
-                                    </span>
-                                  </div>
+                                  <p className="admin-card__byline">
+                                    {leadAuthorName(m.authors)} · {daysAgo(m.created_at)}
+                                  </p>
                                 </div>
                                 <span
                                   className={`admin-status admin-status--${
                                     m.status || "submitted"
                                   }`}
                                 >
-                                  {m.status || "submitted"}
+                                  {formatStatusLabel(m.status)}
                                 </span>
                               </div>
 
-                              <div className="admin-card__details">
-                                <span className="admin-chip admin-chip--muted">
-                                  Reviewers: {assigned.length}
-                                </span>
-                                {assigned.length === 0 && (
-                                  <span className="admin-chip admin-chip--warning">
-                                    Unassigned
-                                  </span>
-                                )}
+                              <div className="admin-card__facts">
+                                <div className="admin-card__fact">
+                                  <span>Reviewers</span>
+                                  <strong>{assigned.length}</strong>
+                                </div>
+                                <div className="admin-card__fact">
+                                  <span>Assignment</span>
+                                  <strong>
+                                    {assigned.length === 0 ? "Needed" : "In place"}
+                                  </strong>
+                                </div>
                               </div>
 
                               <div className="admin-card__actions">
@@ -458,7 +527,7 @@ export default function AdminPage() {
                                   href={`/admin/submissions/${m.id}`}
                                   className="admin-btn admin-btn--ghost"
                                 >
-                                  Open
+                                  Open case
                                 </Link>
 
                                 {role !== "reviewer" &&
@@ -473,7 +542,7 @@ export default function AdminPage() {
                                     >
                                       {STATUS_OPTIONS.map((s) => (
                                         <option key={s} value={s}>
-                                          {s}
+                                          {formatStatusLabel(s)}
                                         </option>
                                       ))}
                                     </select>
@@ -531,7 +600,7 @@ export default function AdminPage() {
 
           <aside className="admin-side">
             <div className="admin-panel">
-              <h3>Quick overview</h3>
+              <h3>Editorial snapshot</h3>
               <ul className="admin-list">
                 <li>
                   <strong>Signed-in role</strong>
@@ -540,6 +609,10 @@ export default function AdminPage() {
                 <li>
                   <strong>Active filter</strong>
                   <span>{formatFilterLabel(filter)}</span>
+                </li>
+                <li>
+                  <strong>Reviewers available</strong>
+                  <span>{reviewers.length}</span>
                 </li>
                 <li>
                   <strong>Notifications</strong>
@@ -562,7 +635,7 @@ export default function AdminPage() {
             </div>
 
             <div className="admin-panel">
-              <h3>Notifications</h3>
+              <h3>Recent notifications</h3>
               {notifications.length === 0 && (
                 <p className="admin-muted">No updates yet.</p>
               )}
