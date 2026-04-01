@@ -14,7 +14,7 @@ const STATIC_ROUTES = [
   "/instructions",
   "/instructions/contributions",
   "/instructions/copyright",
-  "/instructions/transfer",
+  "/instructions/how-to-submit",
   "/author/submit",
   "/notices/call-for-papers",
 ];

@@ -1,24 +1,5 @@
-import CmsPage from "../../components/CmsPage";
-import { buildPageMetadata } from "../../../lib/seo";
-import { getSiteContentEntries } from "../../../lib/publicContent";
+import { redirect } from "next/navigation";
 
-export const metadata = buildPageMetadata({
-  title: "Transfer of Copyright",
-  description:
-    "Review the transfer of copyright terms for materials published in UpDAYtes.",
-  path: "/instructions/transfer",
-});
-
-export default async function TransferPage() {
-  const content = (await getSiteContentEntries([
-    "page.transfer",
-  ])) as Record<string, unknown>;
-
-  return (
-    <CmsPage
-      contentKey="page.transfer"
-      title="Transfer of Copyright"
-      initialValue={content["page.transfer"]}
-    />
-  );
+export default function LegacyTransferRedirectPage() {
+  redirect("/instructions/how-to-submit");
 }

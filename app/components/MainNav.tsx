@@ -11,6 +11,13 @@ type NavItem = {
   href: string;
 };
 
+function matchesPath(currentPath: string, href: string) {
+  if (!currentPath || !href) return false;
+  if (currentPath === href) return true;
+  if (href === "/") return currentPath === "/";
+  return currentPath.startsWith(`${href}/`);
+}
+
 const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Home",
@@ -31,7 +38,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     items: [
       { label: "Author Contributions", href: "/instructions/contributions" },
       { label: "Copyright Statement", href: "/instructions/copyright" },
-      { label: "Transfer of Copyright", href: "/instructions/transfer" },
+      { label: "How to Submit Your Manuscript", href: "/instructions/how-to-submit" },
     ],
   },
   {
@@ -49,15 +56,21 @@ const PRIMARY_LINKS: NavItem[] = [
 function DesktopDropdown({
   label,
   items,
+  pathname,
 }: {
   label: string;
   items: NavItem[];
+  pathname: string;
 }) {
+  const groupIsActive = items.some((item) => matchesPath(pathname, item.href));
+
   return (
     <div className="site-nav__group">
       <button
         type="button"
-        className="site-nav__link site-nav__trigger"
+        className={`site-nav__link site-nav__trigger ${
+          groupIsActive ? "site-nav__link--active" : ""
+        }`}
         aria-haspopup="true"
       >
         {label}
@@ -65,7 +78,13 @@ function DesktopDropdown({
 
       <div className="site-nav__dropdown">
         {items.map((item) => (
-          <Link key={item.href} href={item.href} className="site-nav__dropdownLink">
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`site-nav__dropdownLink ${
+              matchesPath(pathname, item.href) ? "site-nav__dropdownLink--active" : ""
+            }`}
+          >
             {item.label}
           </Link>
         ))}
@@ -75,7 +94,7 @@ function DesktopDropdown({
 }
 
 export default function MainNav() {
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -133,11 +152,17 @@ export default function MainNav() {
     <div className="site-nav">
       <nav className="site-nav__desktop" aria-label="Primary">
         {NAV_GROUPS.map((group) => (
-          <DesktopDropdown key={group.label} {...group} />
+          <DesktopDropdown key={group.label} {...group} pathname={pathname} />
         ))}
 
         {PRIMARY_LINKS.map((item) => (
-          <Link key={item.href} href={item.href} className="site-nav__link">
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`site-nav__link ${
+              matchesPath(pathname, item.href) ? "site-nav__link--active" : ""
+            }`}
+          >
             {item.label}
           </Link>
         ))}
@@ -192,7 +217,11 @@ export default function MainNav() {
                 <div key={group.label} className="site-nav__mobileGroup">
                   <button
                     type="button"
-                    className="site-nav__mobileTrigger"
+                    className={`site-nav__mobileTrigger ${
+                      group.items.some((item) => matchesPath(pathname, item.href))
+                        ? "site-nav__mobileTrigger--active"
+                        : ""
+                    }`}
                     aria-expanded={isOpen}
                     onClick={() =>
                       setOpenGroup((prev) => (prev === group.label ? null : group.label))
@@ -208,7 +237,11 @@ export default function MainNav() {
                         <Link
                           key={item.href}
                           href={item.href}
-                          className="site-nav__mobileLink"
+                          className={`site-nav__mobileLink ${
+                            matchesPath(pathname, item.href)
+                              ? "site-nav__mobileLink--active"
+                              : ""
+                          }`}
                         >
                           {item.label}
                         </Link>
@@ -221,7 +254,15 @@ export default function MainNav() {
 
             <div className="site-nav__mobileLinks site-nav__mobileLinks--flat">
               {PRIMARY_LINKS.map((item) => (
-                <Link key={item.href} href={item.href} className="site-nav__mobileLink">
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`site-nav__mobileLink ${
+                    matchesPath(pathname, item.href)
+                      ? "site-nav__mobileLink--active"
+                      : ""
+                  }`}
+                >
                   {item.label}
                 </Link>
               ))}

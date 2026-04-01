@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
@@ -27,9 +28,6 @@ export default function AuthorSubmitPage() {
     [maxFileSizeMb]
   );
 
-  /* -------------------------------------------------- */
-  /* Ensure user is logged in                            */
-  /* -------------------------------------------------- */
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.auth.getUser();
@@ -44,9 +42,6 @@ export default function AuthorSubmitPage() {
     })();
   }, [router]);
 
-  /* -------------------------------------------------- */
-  /* Submit manuscript                                   */
-  /* -------------------------------------------------- */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -90,7 +85,10 @@ export default function AuthorSubmitPage() {
         throw new Error("Missing session token");
       }
 
-      async function createSignedUpload(fileToUpload: File, kind: "pdf" | "word") {
+      async function createSignedUpload(
+        fileToUpload: File,
+        kind: "pdf" | "word"
+      ) {
         const resp = await fetch("/api/submissions/create-upload", {
           method: "POST",
           headers: {
@@ -146,9 +144,6 @@ export default function AuthorSubmitPage() {
           })),
       ];
 
-      /* ---------------------------------------------- */
-      /* 2. Create manuscript record via API             */
-      /* ---------------------------------------------- */
       const resp = await fetch("/api/submissions/create", {
         method: "POST",
         headers: {
@@ -190,7 +185,9 @@ export default function AuthorSubmitPage() {
           );
         }
 
-        const receiptCode = String(notifyJson?.receipt?.receiptCode || "").trim();
+        const receiptCode = String(
+          notifyJson?.receipt?.receiptCode || ""
+        ).trim();
         emailStatusSuffix = receiptCode
           ? ` Confirmation email sent. Receipt code: ${receiptCode}.`
           : " Confirmation email sent.";
@@ -217,275 +214,193 @@ export default function AuthorSubmitPage() {
     }
   }
 
-  /* -------------------------------------------------- */
-  /* Render                                             */
-  /* -------------------------------------------------- */
   return (
     <main className="portal-page portal-page--author">
       <div className="portal-shell">
         <header className="portal-header">
           <div>
             <h1 className="portal-title">Submit Manuscript</h1>
+            <p className="portal-subtitle">
+              Upload one review-ready PDF and one editable Word version of the
+              same manuscript.
+            </p>
           </div>
         </header>
 
+        <section className="portal-submit-guide">
+          <div className="portal-submit-guide__copy">
+            <p className="portal-submit-guide__eyebrow">Before You Submit</p>
+            <h2>Keep the submission clear, complete, and easy to process</h2>
+            <p>
+              Add the manuscript title, abstract, lead author, and any co-authors,
+              then upload both the PDF and Word versions in the correct place.
+            </p>
+          </div>
+
+          <Link
+            href="/instructions/how-to-submit"
+            className="portal-btn portal-btn--ghost"
+          >
+            Read How To Submit
+          </Link>
+        </section>
+
         <form onSubmit={handleSubmit} className="portal-card portal-form">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Manuscript Title"
-          className="portal-input"
-        />
-
-        <textarea
-          value={abstract}
-          onChange={(e) => setAbstract(e.target.value)}
-          placeholder="Abstract"
-          className="portal-textarea"
-        />
-
-        <div className="portal-section">
-          <div className="portal-section__title">Lead Author</div>
           <input
-            value={authorName}
-            onChange={(e) => setAuthorName(e.target.value)}
-            placeholder="Lead author full name"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Manuscript Title"
             className="portal-input"
           />
-          <div className="portal-meta">
-            Email: {userEmail || "Loading…"}
+
+          <textarea
+            value={abstract}
+            onChange={(e) => setAbstract(e.target.value)}
+            placeholder="Abstract"
+            className="portal-textarea"
+          />
+
+          <div className="portal-section">
+            <div className="portal-section__title">Lead Author</div>
+            <input
+              value={authorName}
+              onChange={(e) => setAuthorName(e.target.value)}
+              placeholder="Lead author full name"
+              className="portal-input"
+            />
+            <div className="portal-meta">Email: {userEmail || "Loading…"}</div>
           </div>
-        </div>
 
-        <div className="portal-section">
-          <div className="portal-row">
-            <div className="portal-section__title">Co-authors (optional)</div>
-            <span />
-            <button
-              type="button"
-              onClick={() =>
-                setCoAuthors((prev) => [...prev, { name: "", email: "" }])
-              }
-              className="portal-link"
-            >
-              + Add co-author
-            </button>
-          </div>
-
-          {coAuthors.length === 0 && (
-            <div className="portal-empty">No co-authors added.</div>
-          )}
-
-          {coAuthors.map((author, index) => (
-            <div key={index} className="portal-row">
-              <input
-                value={author.name}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setCoAuthors((prev) =>
-                    prev.map((a, i) => (i === index ? { ...a, name: value } : a))
-                  );
-                }}
-                placeholder="Co-author name"
-                className="portal-input"
-              />
-              <input
-                value={author.email}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setCoAuthors((prev) =>
-                    prev.map((a, i) => (i === index ? { ...a, email: value } : a))
-                  );
-                }}
-                placeholder="Co-author email"
-                className="portal-input"
-              />
+          <div className="portal-section">
+            <div className="portal-row">
+              <div className="portal-section__title">Co-authors (optional)</div>
+              <span />
               <button
                 type="button"
                 onClick={() =>
-                  setCoAuthors((prev) => prev.filter((_, i) => i !== index))
+                  setCoAuthors((prev) => [...prev, { name: "", email: "" }])
                 }
                 className="portal-link"
-                style={{ color: "#b91c1c" }}
               >
-                Remove
+                + Add co-author
               </button>
             </div>
-          ))}
-        </div>
 
-        <div className="portal-file">
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) =>
-              setFile((e.target as HTMLInputElement).files?.[0] ?? null)
+            {coAuthors.length === 0 && (
+              <div className="portal-empty">No co-authors added.</div>
+            )}
+
+            {coAuthors.map((author, index) => (
+              <div key={index} className="portal-row">
+                <input
+                  value={author.name}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCoAuthors((prev) =>
+                      prev.map((a, i) =>
+                        i === index ? { ...a, name: value } : a
+                      )
+                    );
+                  }}
+                  placeholder="Co-author name"
+                  className="portal-input"
+                />
+                <input
+                  value={author.email}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCoAuthors((prev) =>
+                      prev.map((a, i) =>
+                        i === index ? { ...a, email: value } : a
+                      )
+                    );
+                  }}
+                  placeholder="Co-author email"
+                  className="portal-input"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCoAuthors((prev) => prev.filter((_, i) => i !== index))
+                  }
+                  className="portal-link"
+                  style={{ color: "#b91c1c" }}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="portal-upload-grid">
+            <label className="portal-file portal-file--highlight">
+              <span className="portal-file__eyebrow">Required file 1</span>
+              <strong>Upload the review-ready PDF</strong>
+              <p>
+                Attach the final PDF snapshot of the manuscript exactly as you
+                want reviewers and editors to read it.
+              </p>
+              <span className="portal-file__meta">Accepted format: PDF</span>
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) =>
+                  setFile((e.target as HTMLInputElement).files?.[0] ?? null)
+                }
+              />
+              <span className="portal-file__selected">
+                {file ? `Selected: ${file.name}` : "No PDF selected yet"}
+              </span>
+            </label>
+
+            <label className="portal-file portal-file--highlight">
+              <span className="portal-file__eyebrow">Required file 2</span>
+              <strong>Upload the editable Word manuscript</strong>
+              <p>
+                Attach the editable .doc or .docx file here. This should match
+                the PDF version above.
+              </p>
+              <span className="portal-file__meta">
+                Accepted formats: DOC, DOCX
+              </span>
+              <input
+                type="file"
+                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) =>
+                  setWordFile((e.target as HTMLInputElement).files?.[0] ?? null)
+                }
+              />
+              <span className="portal-file__selected">
+                {wordFile
+                  ? `Selected: ${wordFile.name}`
+                  : "No Word file selected yet"}
+              </span>
+            </label>
+          </div>
+
+          <div className="portal-actions">
+            <button
+              type="submit"
+              disabled={loading}
+              className="portal-btn portal-btn--primary"
+            >
+              {loading ? "Submitting…" : "Submit"}
+            </button>
+          </div>
+        </form>
+
+        {status && (
+          <p
+            className={
+              status.startsWith("Error")
+                ? "portal-status portal-status--error"
+                : "portal-status"
             }
-          />
-        </div>
-
-        <div className="portal-file">
-          <input
-            type="file"
-            accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={(e) =>
-              setWordFile((e.target as HTMLInputElement).files?.[0] ?? null)
-            }
-          />
-        </div>
-
-        <div className="portal-actions">
-        <button
-          type="submit"
-          disabled={loading}
-          className="portal-btn portal-btn--primary"
-        >
-          {loading ? "Submitting…" : "Submit"}
-        </button>
-        </div>
-      </form>
-
-      {status && (
-        <p className={status.startsWith("Error") ? "portal-status portal-status--error" : "portal-status"}>{status}</p>
-      )}
+          >
+            {status}
+          </p>
+        )}
       </div>
     </main>
   );
 }
-
-
-
-
-/*"use client";
-
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "../../../lib/supabaseClient";
-
-export default function AuthorSubmitPage() {
-  const router = useRouter();
-
-  const [title, setTitle] = useState("");
-  const [abstract, setAbstract] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  // Ensure login 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (!data?.user) {
-        router.replace("/login");
-        return;
-      }
-      setUserId(data.user.id);
-    })();
-  }, [router]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!title || !file) {
-      setStatus("Title and PDF file are required.");
-      return;
-    }
-
-    if (!userId) {
-      setStatus("You must be logged in.");
-      return;
-    }
-
-    setLoading(true);
-    setStatus("Uploading PDF…");
-
-    try {
-      const cleanName = file.name.replace(/[^\w.\-]/g, "_");
-      const storagePath = `manuscripts/${userId}/${Date.now()}-${cleanName}`;
-
-      // 1️⃣ Upload to Supabase Storage 
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from("manuscripts")
-        .upload(storagePath, file, {
-          contentType: "application/pdf",
-          upsert: false,
-        });
-
-      if (uploadErr) throw uploadErr;
-
-      // 2️⃣ Create manuscript record 
-      const resp = await fetch("/api/submissions/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          abstract,
-          file_storage_path: uploadData.path,
-          uploader_id: userId,
-        }),
-      });
-
-      const json = await resp.json();
-      if (!resp.ok) throw new Error(json.error);
-
-      setStatus("Submission successful. Redirecting…");
-      setTimeout(() => router.push("/author/dashboard"), 800);
-    } catch (err: any) {
-      console.error(err);
-      setStatus("Error: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <main className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Submit Manuscript</h1>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Manuscript Title"
-          className="portal-input"
-        />
-
-        <textarea
-          value={abstract}
-          onChange={(e) => setAbstract(e.target.value)}
-          placeholder="Abstract"
-          className="w-full border p-2 rounded h-32"
-        />
-
-        <input
-          type="file"
-          accept="application/pdf"
-          onChange={(e) =>
-            setFile((e.target as HTMLInputElement).files?.[0] ?? null)
-          }
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 rounded bg-[#6A3291] text-white"
-        >
-          {loading ? "Submitting…" : "Submit"}
-        </button>
-      </form>
-
-      {status && <p className="mt-4 text-sm">{status}</p>}
-      </div>
-    </main>
-  );
-}
-*/
-
-
-
-
-
-
-
-
