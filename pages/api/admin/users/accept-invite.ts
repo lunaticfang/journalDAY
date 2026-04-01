@@ -5,9 +5,7 @@ import {
   hashInviteToken,
   randomPassword,
 } from "../../../../lib/adminInviteToken";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM = process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
+import { sendTransactionalEmail } from "../../../../lib/transactionalEmail";
 
 async function findAuthUserByEmail(email: string) {
   const { data, error } = await supabaseServer.auth.admin.listUsers({
@@ -21,10 +19,6 @@ async function findAuthUserByEmail(email: string) {
 }
 
 async function sendSecondEmail(recipient: string, actionLink: string) {
-  if (!RESEND_API_KEY) {
-    throw new Error("Missing RESEND_API_KEY");
-  }
-
   const subject = "Your UpDAYtes Admin Access Is Ready";
   const html = `
     <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
@@ -40,25 +34,22 @@ async function sendSecondEmail(recipient: string, actionLink: string) {
       <p style="margin-top: 18px;">For security, this link may expire. Request a new invite if needed.</p>
     </div>
   `;
+  const text = [
+    "Admin Access Approved",
+    "",
+    "Your UpDAYtes admin invitation has been confirmed.",
+    `Set your password: ${actionLink}`,
+    "",
+    "After setting your password, sign in at the Admin Login page.",
+  ].join("\n");
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM,
-      to: [recipient],
-      subject,
-      html,
-    }),
+  await sendTransactionalEmail({
+    to: [recipient],
+    subject,
+    html,
+    text,
+    tags: ["admin", "invite-approved"],
   });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || "Failed to send password setup email");
-  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

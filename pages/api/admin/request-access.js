@@ -14,10 +14,10 @@ import {
   MAX_ADMIN_REQUEST_MESSAGE_LENGTH,
   MAX_ADMIN_REQUEST_NAME_LENGTH,
 } from "../../../lib/adminRequestSecurity";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM =
-  process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
+import {
+  getTransactionalEmailProvider,
+  sendTransactionalEmail,
+} from "../../../lib/transactionalEmail";
 const GENERIC_SUCCESS_MESSAGE =
   "Request submitted. If approved, an owner or admin will contact you by email.";
 const DUPLICATE_PENDING_MESSAGE =
@@ -43,7 +43,7 @@ function escapeHtml(value) {
 }
 
 async function notifyOwner({ name, email, message, createdAt }) {
-  if (!RESEND_API_KEY) {
+  if (!getTransactionalEmailProvider()) {
     return false;
   }
 
@@ -68,25 +68,26 @@ async function notifyOwner({ name, email, message, createdAt }) {
     </div>
   `;
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM,
-      to: ownerEmails,
-      subject,
-      html,
-      reply_to: email,
-    }),
-  });
+  const text = [
+    "Admin Access Request",
+    "",
+    "A new admin access request was submitted.",
+    `Name: ${name || "Not provided"}`,
+    `Email: ${email}`,
+    `Submitted: ${createdAt}`,
+    "",
+    "Reason:",
+    message || "No reason provided.",
+  ].join("\n");
 
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || "Failed to send request email");
-  }
+  await sendTransactionalEmail({
+    to: ownerEmails,
+    subject,
+    html,
+    text,
+    replyTo: email,
+    tags: ["admin", "request-access"],
+  });
 
   return true;
 }

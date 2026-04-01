@@ -170,8 +170,11 @@ export default function AuthorSubmitPage() {
         throw new Error(json?.error || "Submission failed");
       }
 
+      const manuscriptId = String(json?.manuscript?.id || "").trim();
+      let emailStatusSuffix = "";
+
       try {
-        await fetch("/api/submissions/notify", {
+        const notifyResp = await fetch("/api/submissions/notify", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -179,12 +182,33 @@ export default function AuthorSubmitPage() {
           },
           body: JSON.stringify({ manuscript_id: json?.manuscript?.id }),
         });
+
+        const notifyJson = await notifyResp.json().catch(() => ({}));
+        if (!notifyResp.ok) {
+          throw new Error(
+            notifyJson?.error || "Failed to send submission confirmation email"
+          );
+        }
+
+        const receiptCode = String(notifyJson?.receipt?.receiptCode || "").trim();
+        emailStatusSuffix = receiptCode
+          ? ` Confirmation email sent. Receipt code: ${receiptCode}.`
+          : " Confirmation email sent.";
       } catch (err) {
         console.warn("Confirmation email failed:", err);
+        emailStatusSuffix =
+          " Submission saved, but we could not send the confirmation email right now.";
       }
 
-      setStatus("Submission successful. Redirecting…");
-      setTimeout(() => router.push("/author/dashboard"), 800);
+      setStatus(
+        [
+          "Submission successful.",
+          manuscriptId ? ` Submission ID: ${manuscriptId}.` : "",
+          emailStatusSuffix,
+          " Redirecting…",
+        ].join("")
+      );
+      setTimeout(() => router.push("/author/dashboard"), 1200);
     } catch (err: any) {
       console.error(err);
       setStatus("Error: " + (err.message || String(err)));

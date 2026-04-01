@@ -7,19 +7,13 @@ import {
   getInviteTtlHours,
   hashInviteToken,
 } from "../../../../lib/adminInviteToken";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM = process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
+import { sendTransactionalEmail } from "../../../../lib/transactionalEmail";
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 async function sendInviteEmail(recipient: string, approveUrl: string, inviterEmail: string | null) {
-  if (!RESEND_API_KEY) {
-    throw new Error("Missing RESEND_API_KEY");
-  }
-
   const subject = "UpDAYtes Admin Invite - Confirm Access";
   const html = `
     <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.6;">
@@ -36,25 +30,24 @@ async function sendInviteEmail(recipient: string, approveUrl: string, inviterEma
       <p style="margin-top: 18px;">If you did not expect this invite, ignore this email.</p>
     </div>
   `;
+  const text = [
+    "Admin Invitation",
+    "",
+    "You were invited to become an administrator at UpDAYtes.",
+    `Invited by: ${inviterEmail || "UpDAYtes Owner/Admin"}`,
+    "",
+    `Confirm invitation: ${approveUrl}`,
+    "",
+    "This link expires in 7 days.",
+  ].join("\n");
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM,
-      to: [recipient],
-      subject,
-      html,
-    }),
+  await sendTransactionalEmail({
+    to: [recipient],
+    subject,
+    html,
+    text,
+    tags: ["admin", "invite"],
   });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || "Failed to send invite email");
-  }
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

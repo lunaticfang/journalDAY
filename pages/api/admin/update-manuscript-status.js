@@ -1,6 +1,10 @@
 // pages/api/admin/update-manuscript-status.js
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireEditor } from "../../../lib/adminAuth";
+import {
+  getTransactionalEmailProvider,
+  sendTransactionalEmail,
+} from "../../../lib/transactionalEmail";
 
 const ALLOWED_STATUSES = [
   "submitted",
@@ -10,10 +14,6 @@ const ALLOWED_STATUSES = [
   "published",
   "revisions_requested",
 ];
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM =
-  process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
 
 function parseAuthors(raw) {
   if (!raw) return [];
@@ -48,7 +48,7 @@ async function createNotifications(userIds, payload) {
 }
 
 async function sendStatusEmail(recipients, manuscript, status) {
-  if (!RESEND_API_KEY || recipients.length === 0) return;
+  if (!getTransactionalEmailProvider() || recipients.length === 0) return;
 
   const title = manuscript.title || "Manuscript";
   const subject = `Status update: ${title}`;
@@ -62,25 +62,24 @@ async function sendStatusEmail(recipients, manuscript, status) {
       <p style="margin-top: 16px;">- Editorial Office</p>
     </div>
   `;
+  const text = [
+    "Submission update",
+    "",
+    "Your manuscript status has been updated.",
+    `Title: ${title}`,
+    `Status: ${status}`,
+    `Submission ID: ${manuscript.id}`,
+    "",
+    "- Editorial Office",
+  ].join("\n");
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM,
-      to: recipients,
-      subject,
-      html,
-    }),
+  await sendTransactionalEmail({
+    to: recipients,
+    subject,
+    html,
+    text,
+    tags: ["submission", "status-update"],
   });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || "Failed to send email");
-  }
 }
 
 export default async function handler(req, res) {

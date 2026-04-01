@@ -1,9 +1,9 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireEditor } from "../../../lib/adminAuth";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM =
-  process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
+import {
+  getTransactionalEmailProvider,
+  sendTransactionalEmail,
+} from "../../../lib/transactionalEmail";
 
 function parseAuthors(raw) {
   if (!raw) return [];
@@ -69,7 +69,7 @@ export default async function handler(req, res) {
     const bodyText =
       message || `Your manuscript status is now ${effectiveStatus}.`;
 
-    if (RESEND_API_KEY && recipients.size) {
+    if (getTransactionalEmailProvider() && recipients.size) {
       const html = `
         <div style="font-family: Arial, sans-serif; color: #111827;">
           <h2 style="color: #6A3291; margin-bottom: 12px;">Submission update</h2>
@@ -80,25 +80,24 @@ export default async function handler(req, res) {
           <p style="margin-top: 16px;">- Editorial Office</p>
         </div>
       `;
+      const text = [
+        "Submission update",
+        "",
+        bodyText,
+        `Title: ${title}`,
+        `Status: ${effectiveStatus}`,
+        `Submission ID: ${manuscript.id}`,
+        "",
+        "- Editorial Office",
+      ].join("\n");
 
-      const resp = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: RESEND_FROM,
-          to: Array.from(recipients),
-          subject,
-          html,
-        }),
+      await sendTransactionalEmail({
+        to: Array.from(recipients),
+        subject,
+        html,
+        text,
+        tags: ["submission", "manual-notify"],
       });
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(text || "Failed to send email");
-      }
     }
 
     try {

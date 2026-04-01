@@ -1,12 +1,12 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireEditor } from "../../../../lib/adminAuth";
-
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM =
-  process.env.RESEND_FROM_EMAIL || "no-reply@updaytesjournal.com";
+import {
+  getTransactionalEmailProvider,
+  sendTransactionalEmail,
+} from "../../../../lib/transactionalEmail";
 
 async function sendReviewerEmail(recipient, manuscriptId) {
-  if (!RESEND_API_KEY || !recipient) return;
+  if (!getTransactionalEmailProvider() || !recipient) return;
 
   const subject = "Review request: new manuscript assigned";
   const html = `
@@ -18,25 +18,22 @@ async function sendReviewerEmail(recipient, manuscriptId) {
       <p style="margin-top: 16px;">- Editorial Office</p>
     </div>
   `;
+  const text = [
+    "New review assigned",
+    "",
+    "You have been assigned a manuscript to review.",
+    `Submission ID: ${manuscriptId}`,
+    "",
+    "Please sign in to the admin portal to view the files and submit your recommendation.",
+  ].join("\n");
 
-  const resp = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: RESEND_FROM,
-      to: [recipient],
-      subject,
-      html,
-    }),
+  await sendTransactionalEmail({
+    to: [recipient],
+    subject,
+    html,
+    text,
+    tags: ["review", "assignment"],
   });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text || "Failed to send reviewer email");
-  }
 }
 
 export default async function handler(req, res) {
