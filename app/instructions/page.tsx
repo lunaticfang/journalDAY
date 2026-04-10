@@ -74,7 +74,7 @@ export default function InstructionsPage() {
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-gray-600">
             Please carefully read these instructions before submitting a
-            manuscript to JournalDAY. The full official guidelines are available
+            manuscript to UpDAYtes. The full official guidelines are available
             as a PDF at the end of this page.
           </p>
         </header>
@@ -86,7 +86,7 @@ export default function InstructionsPage() {
             1. Overview
           </h2>
           <p className="text-sm leading-relaxed text-gray-700">
-            JournalDAY publishes peer-reviewed material in medicine and allied
+            UpDAYtes publishes peer-reviewed material in medicine and allied
             disciplines. Submissions should be original, previously unpublished
             work that meaningfully adds to clinical practice, research, or
             education.
@@ -137,7 +137,7 @@ export default function InstructionsPage() {
             4. Ethics, Consent &amp; Conflict of Interest
           </h2>
           <p className="mb-2 text-sm leading-relaxed text-gray-700">
-            All work submitted to JournalDAY must comply with accepted
+            All work submitted to UpDAYtes must comply with accepted
             international ethical standards. Studies involving human
             participants or animals should have prior approval from the
             appropriate ethics committee.
@@ -164,7 +164,7 @@ export default function InstructionsPage() {
             5. Submission &amp; Review Process
           </h2>
           <p className="mb-2 text-sm leading-relaxed text-gray-700">
-            Manuscripts are submitted through the JournalDAY submission system.
+            Manuscripts are submitted through the UpDAYtes submission system.
             The editorial office performs an initial check, followed by peer
             review for suitable submissions.
           </p>
