@@ -8,6 +8,7 @@ import {
   hashInviteToken,
 } from "../../../../lib/adminInviteToken";
 import { sendTransactionalEmail } from "../../../../lib/transactionalEmail";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -140,7 +141,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({ ok: true });
   } catch (err: any) {
-    console.error("admin invite error:", err);
-    return res.status(500).json({ error: err?.message || "Failed to send invite" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-users-invite",
+      err,
+      "Failed to send invite."
+    );
   }
 }

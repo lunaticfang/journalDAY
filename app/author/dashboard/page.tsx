@@ -22,6 +22,15 @@ export default function AuthorDashboard() {
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadMsg, setUploadMsg] = useState("");
 
+  function appendErrorReference(message: string, errorId: string | null | undefined) {
+    const normalizedMessage = String(message || "").trim();
+    const normalizedErrorId = String(errorId || "").trim();
+    if (!normalizedErrorId) {
+      return normalizedMessage;
+    }
+    return `${normalizedMessage} Reference: ${normalizedErrorId}.`;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -111,7 +120,12 @@ export default function AuthorDashboard() {
       }
 
       if (!resp.ok) {
-        throw new Error(json?.error || text || "Failed to upload revision");
+        throw new Error(
+          appendErrorReference(
+            json?.error || text || "Failed to upload revision",
+            json?.errorId
+          )
+        );
       }
 
       setUploadMsg("Revision uploaded successfully.");

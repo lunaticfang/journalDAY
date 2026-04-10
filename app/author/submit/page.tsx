@@ -28,6 +28,46 @@ export default function AuthorSubmitPage() {
     [maxFileSizeMb]
   );
 
+  function getFriendlyEmailFailureMessage(rawError: string | null | undefined) {
+    const text = String(rawError || "").toLowerCase();
+
+    if (!text) {
+      return "Submission saved, but we could not send the confirmation email right now.";
+    }
+
+    if (text.includes("missing email provider configuration")) {
+      return "Submission saved, but confirmation email is not set up yet.";
+    }
+
+    if (text.includes("missing sender email configuration")) {
+      return "Submission saved, but the journal sender email is not configured yet.";
+    }
+
+    if (text.includes("no recipient emails found")) {
+      return "Submission saved, but no recipient email address was available for the receipt.";
+    }
+
+    if (
+      text.includes("brevo") ||
+      text.includes("resend") ||
+      text.includes("smtp") ||
+      text.includes("mail")
+    ) {
+      return "Submission saved, but the confirmation email service is unavailable right now.";
+    }
+
+    return "Submission saved, but we could not send the confirmation email right now.";
+  }
+
+  function appendErrorReference(message: string, errorId: string | null | undefined) {
+    const normalizedMessage = String(message || "").trim();
+    const normalizedErrorId = String(errorId || "").trim();
+    if (!normalizedErrorId) {
+      return normalizedMessage;
+    }
+    return `${normalizedMessage} Reference: ${normalizedErrorId}.`;
+  }
+
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.auth.getUser();
@@ -105,7 +145,12 @@ export default function AuthorSubmitPage() {
 
         const json = await resp.json();
         if (!resp.ok) {
-          throw new Error(json?.error || "Failed to prepare upload");
+          throw new Error(
+            appendErrorReference(
+              json?.error || "Failed to prepare upload",
+              json?.errorId
+            )
+          );
         }
 
         return json as { bucket: string; path: string; token: string };
@@ -162,40 +207,18 @@ export default function AuthorSubmitPage() {
       const json = await resp.json();
 
       if (!resp.ok) {
-        throw new Error(json?.error || "Submission failed");
+        throw new Error(
+          appendErrorReference(json?.error || "Submission failed", json?.errorId)
+        );
       }
 
       const manuscriptId = String(json?.manuscript?.id || "").trim();
-      let emailStatusSuffix = "";
-
-      try {
-        const notifyResp = await fetch("/api/submissions/notify", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ manuscript_id: json?.manuscript?.id }),
-        });
-
-        const notifyJson = await notifyResp.json().catch(() => ({}));
-        if (!notifyResp.ok) {
-          throw new Error(
-            notifyJson?.error || "Failed to send submission confirmation email"
-          );
-        }
-
-        const receiptCode = String(
-          notifyJson?.receipt?.receiptCode || ""
-        ).trim();
-        emailStatusSuffix = receiptCode
+      const receiptCode = String(json?.notification?.receiptCode || "").trim();
+      const emailStatusSuffix = json?.notification?.sent
+        ? receiptCode
           ? ` Confirmation email sent. Receipt code: ${receiptCode}.`
-          : " Confirmation email sent.";
-      } catch (err) {
-        console.warn("Confirmation email failed:", err);
-        emailStatusSuffix =
-          " Submission saved, but we could not send the confirmation email right now.";
-      }
+          : " Confirmation email sent."
+        : ` ${getFriendlyEmailFailureMessage(json?.notification?.error)}`;
 
       setStatus(
         [

@@ -12,6 +12,15 @@ export default function AdminRequestAccessPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  function appendErrorReference(message: string, errorId: string | null | undefined) {
+    const normalizedMessage = String(message || "").trim();
+    const normalizedErrorId = String(errorId || "").trim();
+    if (!normalizedErrorId) {
+      return normalizedMessage;
+    }
+    return `${normalizedMessage} Reference: ${normalizedErrorId}.`;
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setErrorMsg(null);
@@ -35,7 +44,12 @@ export default function AdminRequestAccessPage() {
 
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        throw new Error(json?.error || "Failed to submit request.");
+        throw new Error(
+          appendErrorReference(
+            json?.error || "Failed to submit request.",
+            json?.errorId
+          )
+        );
       }
 
       setSuccessMsg(

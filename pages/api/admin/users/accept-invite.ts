@@ -6,6 +6,7 @@ import {
   randomPassword,
 } from "../../../../lib/adminInviteToken";
 import { sendTransactionalEmail } from "../../../../lib/transactionalEmail";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 async function findAuthUserByEmail(email: string) {
   const { data, error } = await supabaseServer.auth.admin.listUsers({
@@ -179,7 +180,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({ ok: true });
   } catch (err: any) {
-    console.error("accept admin invite error:", err);
-    return res.status(500).json({ error: err?.message || "Failed to accept invite" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-users-accept-invite",
+      err,
+      "Failed to accept invite."
+    );
   }
 }

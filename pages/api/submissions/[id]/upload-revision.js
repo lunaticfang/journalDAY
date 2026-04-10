@@ -1,6 +1,7 @@
 // pages/api/submissions/[id]/upload-revision.js
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { getProfileByUserId, isApprovedProfileRole } from "../../../../lib/accessControl";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 const BUCKET = process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
 
@@ -131,7 +132,12 @@ export default async function handler(req, res) {
       version,
     });
   } catch (err) {
-    console.error("upload-revision error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "submission-upload-revision",
+      err,
+      "Failed to upload the revision."
+    );
   }
 }

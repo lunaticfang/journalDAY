@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireRole } from "../../../../lib/adminAuth";
 import { isOwnerProfile } from "../../../../lib/accessControl";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
@@ -18,7 +19,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .order("email", { ascending: true });
 
   if (error) {
-    return res.status(500).json({ error: error.message || "Failed to load users" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-users-list",
+      error,
+      "Failed to load users."
+    );
   }
 
   return res.status(200).json({

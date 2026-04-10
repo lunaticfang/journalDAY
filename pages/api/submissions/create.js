@@ -1,4 +1,6 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { sendSubmissionReceiptEmail } from "../../../lib/submissionReceipt";
+import { respondWithApiError } from "../../../lib/apiError";
 
 const BUCKET =
   process.env.SUPABASE_BUCKET_MANUSCRIPTS ||
@@ -131,15 +133,58 @@ export default async function handler(req, res) {
 
     if (uErr) throw uErr;
 
+    let notification = {
+      sent: false,
+      receiptCode: null,
+      recipients: [],
+      emailId: null,
+      error: null,
+    };
+
+    try {
+      const receipt = await sendSubmissionReceiptEmail({
+        manuscript: {
+          id: manuscript.id,
+          title: manuscript.title,
+          authors: authorsValue,
+          created_at: manuscript.created_at,
+          status: manuscript.status,
+        },
+        userEmail: userData.user.email ?? null,
+        req,
+      });
+
+      notification = {
+        sent: true,
+        receiptCode: receipt.receiptCode,
+        recipients: receipt.recipients,
+        emailId: receipt.emailId,
+        error: null,
+      };
+    } catch (emailErr) {
+      console.warn("Submission receipt email failed:", emailErr);
+      notification = {
+        sent: false,
+        receiptCode: null,
+        recipients: [],
+        emailId: null,
+        error: emailErr?.message || String(emailErr),
+      };
+    }
+
     return res.status(200).json({
       ok: true,
       manuscript,
       version,
+      notification,
     });
   } catch (err) {
-    console.error("create submission error:", err);
-    return res.status(500).json({
-      error: err.message || String(err),
-    });
+    return respondWithApiError(
+      res,
+      500,
+      "submission-create",
+      err,
+      "Failed to create submission."
+    );
   }
 }

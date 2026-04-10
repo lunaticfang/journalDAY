@@ -5,6 +5,7 @@ import {
   getTransactionalEmailProvider,
   sendTransactionalEmail,
 } from "../../../lib/transactionalEmail";
+import { respondWithApiError } from "../../../lib/apiError";
 
 const ALLOWED_STATUSES = [
   "submitted",
@@ -147,7 +148,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, manuscript: data });
   } catch (err) {
-    console.error("update-manuscript-status error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-update-manuscript-status",
+      err,
+      "Failed to update manuscript status."
+    );
   }
 }

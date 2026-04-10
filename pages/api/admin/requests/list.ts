@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireRole } from "../../../../lib/adminAuth";
 import { normalizeAdminAccessRequestRow } from "../../../../lib/adminAccessRequests";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
@@ -86,7 +87,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
   } catch (err: any) {
-    console.error("admin requests list error:", err);
-    return res.status(500).json({ error: err?.message || "Failed to load requests" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-requests-list",
+      err,
+      "Failed to load requests."
+    );
   }
 }

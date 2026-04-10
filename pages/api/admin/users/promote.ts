@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireRole } from "../../../../lib/adminAuth";
 import { isOwnerProfile } from "../../../../lib/accessControl";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -24,7 +25,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .maybeSingle();
 
   if (existingErr) {
-    return res.status(500).json({ error: existingErr.message || "Failed to read target user" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-users-promote-read",
+      existingErr,
+      "Failed to read target user."
+    );
   }
   if (!existing) {
     return res.status(404).json({ error: "User profile not found" });
@@ -42,7 +49,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     .maybeSingle();
 
   if (updateErr) {
-    return res.status(500).json({ error: updateErr.message || "Failed to promote user" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-users-promote-update",
+      updateErr,
+      "Failed to promote user."
+    );
   }
 
   return res.status(200).json({

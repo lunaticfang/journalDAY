@@ -4,6 +4,7 @@ import {
   getTransactionalEmailProvider,
   sendTransactionalEmail,
 } from "../../../../lib/transactionalEmail";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 async function sendReviewerEmail(recipient, manuscriptId) {
   if (!getTransactionalEmailProvider() || !recipient) return;
@@ -148,7 +149,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, review });
   } catch (err) {
-    console.error("assign reviewer error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-review-assign",
+      err,
+      "Failed to assign reviewer."
+    );
   }
 }

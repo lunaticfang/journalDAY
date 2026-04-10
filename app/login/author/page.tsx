@@ -152,7 +152,7 @@ export default function LoginPage() {
       }
 
       setStatus(
-        "Account created. Check your email once to verify it. After that, you can use your email and password to sign in normally."
+        "If this email is new, check your inbox once to verify it. If you have already signed up with this email, another account was not created — switch to Sign in or use Forgot password instead."
       );
       setMode("signin");
       setEmail(normalizedEmail);
@@ -348,48 +348,66 @@ export default function LoginPage() {
           </button>
         </form>
       ) : (
-        <form onSubmit={handleSignUp} style={{ display: "grid", gap: 12 }}>
-          <input
-            type="email"
-            placeholder="you@example.com"
-            value={signupEmail}
-            onChange={(e) => setSignupEmail(e.target.value)}
-            autoComplete="username"
-            spellCheck={false}
-            style={inputStyle}
-          />
-          <input
-            type="password"
-            placeholder="Create password"
-            value={signupPassword}
-            onChange={(e) => setSignupPassword(e.target.value)}
-            autoComplete="new-password"
-            style={inputStyle}
-          />
-          <input
-            type="password"
-            placeholder="Confirm password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            autoComplete="new-password"
-            style={inputStyle}
-          />
-          <button
-            type="submit"
-            disabled={loading}
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
             style={{
-              padding: "10px 14px",
+              background: "#f8f5fc",
+              border: "1px solid #e9def3",
+              color: "#4b5563",
+              padding: "10px 12px",
               borderRadius: 8,
-              background: "#6A3291",
-              color: "white",
-              border: "none",
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
+              fontSize: 13,
+              lineHeight: 1.6,
             }}
           >
-            {loading ? "Creating account..." : "Create account"}
-          </button>
-        </form>
+            If this email was already used before, a second account will not be created.
+            In that case, use <strong>Sign in</strong> or <strong>Forgot password?</strong>
+            after switching back to the sign-in tab.
+          </div>
+
+          <form onSubmit={handleSignUp} style={{ display: "grid", gap: 12 }}>
+            <input
+              type="email"
+              placeholder="you@example.com"
+              value={signupEmail}
+              onChange={(e) => setSignupEmail(e.target.value)}
+              autoComplete="username"
+              spellCheck={false}
+              style={inputStyle}
+            />
+            <input
+              type="password"
+              placeholder="Create password"
+              value={signupPassword}
+              onChange={(e) => setSignupPassword(e.target.value)}
+              autoComplete="new-password"
+              style={inputStyle}
+            />
+            <input
+              type="password"
+              placeholder="Confirm password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              style={inputStyle}
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                background: "#6A3291",
+                color: "white",
+                border: "none",
+                fontWeight: 600,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              {loading ? "Creating account..." : "Create account"}
+            </button>
+          </form>
+        </div>
       )}
     </main>
   );

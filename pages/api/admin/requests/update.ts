@@ -5,6 +5,7 @@ import {
   normalizeAdminAccessRequestRow,
   normalizeAdminAccessRequestStatus,
 } from "../../../../lib/adminAccessRequests";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -97,7 +98,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     });
   } catch (err: any) {
-    console.error("admin request update error:", err);
-    return res.status(500).json({ error: err?.message || "Failed to update request" });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-requests-update",
+      err,
+      "Failed to update request."
+    );
   }
 }

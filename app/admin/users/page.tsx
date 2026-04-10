@@ -19,6 +19,7 @@ type ListResponse = {
     isOwner: boolean;
   };
   error?: string;
+  errorId?: string;
 };
 
 type AdminAccessRequest = {
@@ -36,6 +37,7 @@ type AdminAccessRequest = {
 type RequestsResponse = {
   requests?: AdminAccessRequest[];
   error?: string;
+  errorId?: string;
 };
 
 type RequestFilter =
@@ -66,6 +68,18 @@ export default function AdminUsersPage() {
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [actorIsOwner, setActorIsOwner] = useState(false);
 
+  const appendErrorReference = (
+    message: string,
+    errorId: string | null | undefined
+  ) => {
+    const normalizedMessage = String(message || "").trim();
+    const normalizedErrorId = String(errorId || "").trim();
+    if (!normalizedErrorId) {
+      return normalizedMessage;
+    }
+    return `${normalizedMessage} Reference: ${normalizedErrorId}.`;
+  };
+
   const loadUsers = async (
     activeToken: string,
     fallbackId?: string | null,
@@ -90,7 +104,9 @@ export default function AdminUsersPage() {
     }
 
     if (!resp.ok) {
-      setError(json?.error || "Failed to load users.");
+      setError(
+        appendErrorReference(json?.error || "Failed to load users.", json?.errorId)
+      );
       return false;
     }
 
@@ -121,7 +137,12 @@ export default function AdminUsersPage() {
     }
 
     if (!resp.ok) {
-      setError(json?.error || "Failed to load admin access requests.");
+      setError(
+        appendErrorReference(
+          json?.error || "Failed to load admin access requests.",
+          json?.errorId
+        )
+      );
       return false;
     }
 
@@ -196,6 +217,7 @@ export default function AdminUsersPage() {
     const json = (await resp.json().catch(() => ({}))) as {
       error?: string;
       already_admin?: boolean;
+      errorId?: string;
     };
 
     if (resp.status === 401) {
@@ -209,7 +231,9 @@ export default function AdminUsersPage() {
     }
 
     if (!resp.ok) {
-      throw new Error(json?.error || "Failed to send invite.");
+      throw new Error(
+        appendErrorReference(json?.error || "Failed to send invite.", json?.errorId)
+      );
     }
 
     return {
@@ -235,7 +259,10 @@ export default function AdminUsersPage() {
       body: JSON.stringify({ id, status }),
     });
 
-    const json = (await resp.json().catch(() => ({}))) as { error?: string };
+    const json = (await resp.json().catch(() => ({}))) as {
+      error?: string;
+      errorId?: string;
+    };
 
     if (resp.status === 401) {
       router.replace("/admin/login");
@@ -248,7 +275,12 @@ export default function AdminUsersPage() {
     }
 
     if (!resp.ok) {
-      throw new Error(json?.error || "Failed to update request.");
+      throw new Error(
+        appendErrorReference(
+          json?.error || "Failed to update request.",
+          json?.errorId
+        )
+      );
     }
 
     return true;
@@ -273,7 +305,10 @@ export default function AdminUsersPage() {
         body: JSON.stringify({ userId }),
       });
 
-      const json = (await resp.json().catch(() => ({}))) as { error?: string };
+      const json = (await resp.json().catch(() => ({}))) as {
+        error?: string;
+        errorId?: string;
+      };
 
       if (resp.status === 401) {
         router.replace("/admin/login");
@@ -286,7 +321,9 @@ export default function AdminUsersPage() {
       }
 
       if (!resp.ok) {
-        setError(json.error || "Action failed.");
+        setError(
+          appendErrorReference(json.error || "Action failed.", json?.errorId)
+        );
         return;
       }
 

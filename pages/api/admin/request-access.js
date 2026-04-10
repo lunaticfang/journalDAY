@@ -18,6 +18,7 @@ import {
   getTransactionalEmailProvider,
   sendTransactionalEmail,
 } from "../../../lib/transactionalEmail";
+import { respondWithApiError } from "../../../lib/apiError";
 const GENERIC_SUCCESS_MESSAGE =
   "Request submitted. If approved, an owner or admin will contact you by email.";
 const DUPLICATE_PENDING_MESSAGE =
@@ -298,7 +299,12 @@ export default async function handler(req, res) {
         : GENERIC_SUCCESS_MESSAGE,
     });
   } catch (err) {
-    console.error("request admin access error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-request-access",
+      err,
+      "Failed to submit admin access request."
+    );
   }
 }

@@ -1,6 +1,7 @@
 // pages/api/submissions/[id]/signed-url.js
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { isApprovedProfileRole, isOwnerProfile } from "../../../../lib/accessControl";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 const BUCKET = process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
 
@@ -230,7 +231,12 @@ export default async function handler(req, res) {
       expiresAt: signedData.expiry,
     });
   } catch (err) {
-    console.error("signed-url error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "submission-signed-url",
+      err,
+      "Failed to prepare the file link."
+    );
   }
 }
