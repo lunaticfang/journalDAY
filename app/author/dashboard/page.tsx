@@ -1,9 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+
+type IssueLink = {
+  issue_id: string;
+  issue_title: string | null;
+  issue_label: string;
+  published_at: string | null;
+  is_current_issue: boolean;
+};
 
 type Manuscript = {
   id: string;
@@ -12,14 +20,41 @@ type Manuscript = {
   created_at: string | null;
   author_id: string | null;
   submitter_id: string | null;
+  issue_links?: IssueLink[];
+  issue_count?: number;
+  is_in_any_issue?: boolean;
+  is_in_current_issue?: boolean;
+  is_in_previous_issue?: boolean;
+  latest_version?: {
+    id: string;
+    created_at: string | null;
+  } | null;
+  latest_feedback?: {
+    recommendation: string | null;
+    notes: string | null;
+    decided_at: string | null;
+    review_id: string | null;
+  } | null;
 };
+
+type DashboardScope = "all" | "current_issue" | "unpublished" | "previous_issues";
+
+const DASHBOARD_SCOPES: { key: DashboardScope; label: string }[] = [
+  { key: "all", label: "All submissions" },
+  { key: "current_issue", label: "In current issue" },
+  { key: "unpublished", label: "Not in any issue" },
+  { key: "previous_issues", label: "In previous issues" },
+];
 
 export default function AuthorDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [manuscripts, setManuscripts] = useState<Manuscript[]>([]);
+  const [latestIssueId, setLatestIssueId] = useState<string | null>(null);
+  const [scope, setScope] = useState<DashboardScope>("all");
   const [status, setStatus] = useState("");
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const [uploadMsg, setUploadMsg] = useState("");
 
   function appendErrorReference(message: string, errorId: string | null | undefined) {
@@ -45,19 +80,38 @@ export default function AuthorDashboard() {
 
       try {
         setLoading(true);
+        const accessToken = data?.session?.access_token;
+        if (!accessToken) {
+          router.replace("/author/submit");
+          return;
+        }
 
-        const { data: rows, error } = await supabase
-          .from("manuscripts")
-          .select("id, title, status, created_at, author_id, submitter_id")
-          .or(`author_id.eq.${user.id},submitter_id.eq.${user.id}`)
-          .order("created_at", { ascending: false });
+        const resp = await fetch("/api/author/dashboard", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
 
-        if (error) throw error;
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(
+            appendErrorReference(
+              json?.error || "Failed to load dashboard.",
+              json?.errorId
+            )
+          );
+        }
 
-        if (!cancelled) setManuscripts(rows || []);
-      } catch (err: any) {
+        if (!cancelled) {
+          setManuscripts(json?.manuscripts || []);
+          setLatestIssueId(
+            typeof json?.latest_issue_id === "string" ? json.latest_issue_id : null
+          );
+        }
+      } catch (err: unknown) {
         console.error(err);
-        if (!cancelled) setStatus(err.message || String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        if (!cancelled) setStatus(message);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -79,6 +133,46 @@ export default function AuthorDashboard() {
       reader.onerror = (err) => reject(err);
       reader.readAsDataURL(file);
     });
+  }
+
+  async function openLatestPdf(manuscriptId: string) {
+    try {
+      setOpeningId(manuscriptId);
+      setUploadMsg("");
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        router.replace("/author/submit");
+        return;
+      }
+
+      const resp = await fetch(`/api/submissions/${manuscriptId}/signed-url`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(
+          appendErrorReference(
+            json?.error || "Failed to open latest manuscript file.",
+            json?.errorId
+          )
+        );
+      }
+
+      if (json?.signedUrl) {
+        window.open(json.signedUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      const message = err instanceof Error ? err.message : String(err);
+      setUploadMsg("Error: " + message);
+    } finally {
+      setOpeningId(null);
+    }
   }
 
   async function handleRevisionUpload(manuscriptId: string, file: File) {
@@ -112,9 +206,9 @@ export default function AuthorDashboard() {
       );
 
       const text = await resp.text();
-      let json: any = null;
+      let json: Record<string, unknown> | null = null;
       try {
-        json = text ? JSON.parse(text) : null;
+        json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
       } catch {
         // non-JSON body
       }
@@ -122,20 +216,55 @@ export default function AuthorDashboard() {
       if (!resp.ok) {
         throw new Error(
           appendErrorReference(
-            json?.error || text || "Failed to upload revision",
-            json?.errorId
+            String(json?.error || text || "Failed to upload revision"),
+            typeof json?.errorId === "string" ? json.errorId : null
           )
         );
       }
 
-      setUploadMsg("Revision uploaded successfully.");
-    } catch (err: any) {
+      const revisionEmailSent = Boolean(
+        (json?.notification as { sent?: boolean } | undefined)?.sent
+      );
+      setUploadMsg(
+        revisionEmailSent
+          ? "Revision uploaded successfully. Confirmation email sent."
+          : "Revision uploaded successfully."
+      );
+    } catch (err: unknown) {
       console.error(err);
-      setUploadMsg("Error: " + (err.message || String(err)));
+      const message = err instanceof Error ? err.message : String(err);
+      setUploadMsg("Error: " + message);
     } finally {
       setUploadingId(null);
     }
   }
+
+  const visibleManuscripts = useMemo(() => {
+    return manuscripts.filter((manuscript) => {
+      if (scope === "current_issue") {
+        return Boolean(manuscript.is_in_current_issue);
+      }
+
+      if (scope === "unpublished") {
+        return !manuscript.is_in_any_issue;
+      }
+
+      if (scope === "previous_issues") {
+        return Boolean(manuscript.is_in_previous_issue);
+      }
+
+      return true;
+    });
+  }, [manuscripts, scope]);
+
+  const scopeCounts = useMemo(() => {
+    return {
+      all: manuscripts.length,
+      current_issue: manuscripts.filter((m) => m.is_in_current_issue).length,
+      unpublished: manuscripts.filter((m) => !m.is_in_any_issue).length,
+      previous_issues: manuscripts.filter((m) => m.is_in_previous_issue).length,
+    };
+  }, [manuscripts]);
 
   return (
     <main className="portal-page portal-page--author">
@@ -157,22 +286,69 @@ export default function AuthorDashboard() {
           {status && <p className="portal-status portal-status--error">{status}</p>}
 
           {!loading && manuscripts.length === 0 && (
-            <p className="portal-empty">You haven't submitted anything yet.</p>
+            <p className="portal-empty">You have not submitted anything yet.</p>
           )}
 
           {!loading && manuscripts.length > 0 && (
             <>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                {DASHBOARD_SCOPES.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => setScope(option.key)}
+                    style={{
+                      borderRadius: 999,
+                      border:
+                        scope === option.key
+                          ? "1px solid rgba(106, 50, 145, 0.42)"
+                          : "1px solid #d1d5db",
+                      background:
+                        scope === option.key
+                          ? "rgba(106, 50, 145, 0.12)"
+                          : "#ffffff",
+                      color: scope === option.key ? "#6A3291" : "#111827",
+                      padding: "8px 12px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {option.label} ({scopeCounts[option.key]})
+                  </button>
+                ))}
+              </div>
+
+              {latestIssueId && scope === "current_issue" && (
+                <p className="portal-meta" style={{ marginBottom: 12 }}>
+                  Showing manuscripts already published in the latest issue.
+                </p>
+              )}
+
+              {!latestIssueId && scope === "current_issue" && (
+                <p className="portal-meta" style={{ marginBottom: 12 }}>
+                  No published issue is available yet.
+                </p>
+              )}
+
               <table className="portal-table">
                 <thead>
                   <tr>
                     <th>Title</th>
                     <th>Status</th>
-                    <th>Submitted</th>
+                    <th>Dates</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {manuscripts.map((m) => {
+                  {visibleManuscripts.map((m) => {
                     const currentStatus = m.status || "submitted";
 
                     const canRevise =
@@ -198,40 +374,135 @@ export default function AuthorDashboard() {
 
                     return (
                       <tr key={m.id} className="portal-table__row">
-                        <td>{m.title || "(untitled)"}</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>
+                            {m.title || "(untitled)"}
+                          </div>
+                          {m.issue_links && m.issue_links.length > 0 && (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 6,
+                                marginTop: 6,
+                              }}
+                            >
+                              {m.issue_links.slice(0, 2).map((issueLink) => (
+                                <span
+                                  key={`${m.id}-${issueLink.issue_id}`}
+                                  style={{
+                                    borderRadius: 999,
+                                    background: "rgba(106, 50, 145, 0.10)",
+                                    color: "#6A3291",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    padding: "3px 8px",
+                                  }}
+                                >
+                                  {issueLink.issue_label}
+                                </span>
+                              ))}
+                              {m.issue_links.length > 2 && (
+                                <span
+                                  style={{
+                                    borderRadius: 999,
+                                    background: "rgba(17, 24, 39, 0.06)",
+                                    color: "#4b5563",
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    padding: "3px 8px",
+                                  }}
+                                >
+                                  +{m.issue_links.length - 2} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {m.latest_feedback?.recommendation && (
+                            <div className="portal-meta" style={{ marginTop: 6 }}>
+                              Latest review: {m.latest_feedback.recommendation}
+                              {m.latest_feedback.decided_at
+                                ? ` (${new Date(
+                                    m.latest_feedback.decided_at
+                                  ).toLocaleDateString()})`
+                                : ""}
+                            </div>
+                          )}
+                          {m.latest_feedback?.notes && (
+                            <div
+                              className="portal-meta"
+                              style={{ marginTop: 4, whiteSpace: "pre-wrap" }}
+                            >
+                              Notes: {m.latest_feedback.notes}
+                            </div>
+                          )}
+                        </td>
                         <td>
                           <span className={statusClass}>{currentStatus}</span>
                         </td>
                         <td>
-                          {m.created_at
-                            ? new Date(m.created_at).toLocaleDateString()
-                            : ""}
+                          <div>
+                            Submitted:{" "}
+                            {m.created_at
+                              ? new Date(m.created_at).toLocaleDateString()
+                              : "-"}
+                          </div>
+                          <div className="portal-meta" style={{ marginTop: 6 }}>
+                            Latest version:{" "}
+                            {m.latest_version?.created_at
+                              ? new Date(m.latest_version.created_at).toLocaleDateString()
+                              : "Initial version"}
+                          </div>
                         </td>
                         <td>
-                          {canRevise ? (
-                            <label className="portal-action">
-                              {uploadingId === m.id
-                                ? "Uploading..."
-                                : "Upload revision"}
-                              <input
-                                type="file"
-                                accept="application/pdf"
-                                style={{ display: "none" }}
-                                onChange={(e) => {
-                                  const f = (e.target as HTMLInputElement).files?.[0];
-                                  if (f) handleRevisionUpload(m.id, f);
-                                }}
-                              />
-                            </label>
-                          ) : (
-                            <span className="portal-meta">No further revisions</span>
-                          )}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <button
+                              type="button"
+                              className="portal-action"
+                              onClick={() => {
+                                void openLatestPdf(m.id);
+                              }}
+                              disabled={openingId === m.id}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                padding: 0,
+                                textAlign: "left",
+                              }}
+                            >
+                              {openingId === m.id ? "Opening..." : "View latest PDF"}
+                            </button>
+                            {canRevise ? (
+                              <label className="portal-action">
+                                {uploadingId === m.id
+                                  ? "Uploading..."
+                                  : "Upload revision"}
+                                <input
+                                  type="file"
+                                  accept="application/pdf"
+                                  style={{ display: "none" }}
+                                  onChange={(e) => {
+                                    const f = (e.target as HTMLInputElement).files?.[0];
+                                    if (f) handleRevisionUpload(m.id, f);
+                                  }}
+                                />
+                              </label>
+                            ) : (
+                              <span className="portal-meta">No further revisions</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+
+              {visibleManuscripts.length === 0 && (
+                <p className="portal-empty" style={{ marginTop: 12 }}>
+                  No submissions found for this filter.
+                </p>
+              )}
 
               {uploadMsg && (
                 <p

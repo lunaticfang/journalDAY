@@ -286,7 +286,11 @@ export default function AdminUsersPage() {
     return true;
   };
 
-  const runAction = async (action: "promote" | "demote", userId: string) => {
+  const runAction = async (
+    action: "promote" | "demote",
+    userId: string,
+    role: "admin" | "reviewer" | null = null
+  ) => {
     if (!token) {
       setError("Please sign in again.");
       return;
@@ -302,7 +306,7 @@ export default function AdminUsersPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userId, role: role || undefined }),
       });
 
       const json = (await resp.json().catch(() => ({}))) as {
@@ -482,7 +486,7 @@ export default function AdminUsersPage() {
       </h1>
 
       <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-        Admin status can be sanctioned by the owner or any existing approved admin.
+        Elevated access (admin or reviewer) can be sanctioned by the owner or an approved admin.
       </p>
 
       <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
@@ -1046,6 +1050,8 @@ export default function AdminUsersPage() {
             const isSelf = u.id === currentUserId;
             const isBusy = busyId === u.id;
             const isAdmin = u.role === "admin" && u.approved === true;
+            const isReviewer = u.role === "reviewer" && u.approved === true;
+            const hasElevatedAccess = isAdmin || isReviewer;
 
             return (
               <tr key={u.id}>
@@ -1057,7 +1063,7 @@ export default function AdminUsersPage() {
                     <span style={{ fontSize: 12, color: "#6b7280" }}>
                       Owner (protected)
                     </span>
-                  ) : isAdmin ? (
+                  ) : hasElevatedAccess ? (
                     <button
                       type="button"
                       onClick={() => runAction("demote", u.id)}
@@ -1070,23 +1076,44 @@ export default function AdminUsersPage() {
                         cursor: isBusy || isSelf ? "not-allowed" : "pointer",
                         opacity: isBusy || isSelf ? 0.6 : 1,
                       }}
-                      title={isSelf ? "You cannot revoke yourself" : "Revoke admin"}
+                      title={isSelf ? "You cannot revoke yourself" : "Revoke elevated access"}
                     >
-                      {isBusy ? "Working..." : "Revoke Admin"}
+                      {isBusy
+                        ? "Working..."
+                        : isAdmin
+                        ? "Revoke Admin"
+                        : "Revoke Reviewer"}
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => runAction("promote", u.id)}
-                      disabled={isBusy}
-                      style={{
-                        ...btn,
-                        cursor: isBusy ? "not-allowed" : "pointer",
-                        opacity: isBusy ? 0.6 : 1,
-                      }}
-                    >
-                      {isBusy ? "Working..." : "Approve as Admin"}
-                    </button>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => runAction("promote", u.id, "admin")}
+                        disabled={isBusy}
+                        style={{
+                          ...btn,
+                          cursor: isBusy ? "not-allowed" : "pointer",
+                          opacity: isBusy ? 0.6 : 1,
+                        }}
+                      >
+                        {isBusy ? "Working..." : "Approve as Admin"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => runAction("promote", u.id, "reviewer")}
+                        disabled={isBusy}
+                        style={{
+                          ...btn,
+                          background: "#ecfeff",
+                          border: "1px solid #a5f3fc",
+                          color: "#155e75",
+                          cursor: isBusy ? "not-allowed" : "pointer",
+                          opacity: isBusy ? 0.6 : 1,
+                        }}
+                      >
+                        {isBusy ? "Working..." : "Approve as Reviewer"}
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

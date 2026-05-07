@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../../lib/supabaseClient";
+import {
+  formatReviewDueDate,
+  isPendingReview,
+} from "../../../../lib/reviewerWorkflowShared";
 
 type Manuscript = {
   id: string;
@@ -22,6 +26,9 @@ type Review = {
   recommendation?: string | null;
   notes?: string | null;
   created_at?: string | null;
+  invited_at?: string | null;
+  due_at?: string | null;
+  last_reminder_at?: string | null;
   decided_at?: string | null;
 };
 
@@ -71,11 +78,15 @@ export default function AdminSubmissionDetail() {
   const [reviewerProfiles, setReviewerProfiles] = useState<ReviewerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [assignEmail, setAssignEmail] = useState("");
+  const [assignDueDate, setAssignDueDate] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [decisionLoading, setDecisionLoading] = useState(false);
   const [recommendation, setRecommendation] = useState("accept");
   const [reviewNotes, setReviewNotes] = useState("");
+  const [reviewWorkflowMetadataReady, setReviewWorkflowMetadataReady] =
+    useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -110,6 +121,7 @@ export default function AdminSubmissionDetail() {
         setReviews(json.reviews || []);
         setReviewerProfiles(json.reviewers || []);
         setRole(json.role || null);
+        setReviewWorkflowMetadataReady(json.reviewWorkflowMetadataReady !== false);
       } catch (err: any) {
         console.error(err);
         setError(err.message || String(err));
@@ -181,6 +193,7 @@ export default function AdminSubmissionDetail() {
     try {
       setAssigning(true);
       setError("");
+      setNotice("");
       const resp = await fetch("/api/admin/review/assign", {
         method: "POST",
         headers: {
@@ -190,11 +203,21 @@ export default function AdminSubmissionDetail() {
         body: JSON.stringify({
           manuscript_id: manuscriptId,
           reviewer_email: assignEmail,
+          due_at: assignDueDate || undefined,
         }),
       });
       const json = await resp.json();
       if (!resp.ok) throw new Error(json?.error || "Failed to assign reviewer");
       setAssignEmail("");
+      setAssignDueDate("");
+      setReviewWorkflowMetadataReady(json.reviewWorkflowMetadataReady !== false);
+      setNotice(
+        json?.alreadyAssigned
+          ? "That reviewer is already attached to this manuscript."
+          : `Reviewer assigned. Due ${formatReviewDueDate(
+              json?.review?.due_at || assignDueDate || undefined
+            )}.`
+      );
       await refresh();
     } catch (err: any) {
       console.error(err);
@@ -215,12 +238,14 @@ export default function AdminSubmissionDetail() {
     setAuthors(json.authors || []);
     setReviews(json.reviews || []);
     setReviewerProfiles(json.reviewers || []);
+    setReviewWorkflowMetadataReady(json.reviewWorkflowMetadataReady !== false);
   }
 
   async function updateStatus(status: string) {
     try {
       setDecisionLoading(true);
       setError("");
+      setNotice("");
       const resp = await fetch("/api/admin/update-manuscript-status", {
         method: "POST",
         headers: {
@@ -244,6 +269,7 @@ export default function AdminSubmissionDetail() {
     try {
       setDecisionLoading(true);
       setError("");
+      setNotice("");
       const resp = await fetch("/api/admin/review/decision", {
         method: "POST",
         headers: {
@@ -317,6 +343,14 @@ export default function AdminSubmissionDetail() {
         </header>
 
         {error && <div className="admin-alert admin-alert--error">{error}</div>}
+        {notice && <div className="admin-alert admin-alert--success">{notice}</div>}
+        {!reviewWorkflowMetadataReady && (
+          <div className="admin-alert">
+            Reviewer deadlines are running in compatibility mode. Run
+            `db/reviewer_mail_phase1.sql` in Supabase to store due dates and
+            reminder history.
+          </div>
+        )}
 
         <div className="admin-detail__grid">
           <section className="admin-panel">
@@ -390,6 +424,18 @@ export default function AdminSubmissionDetail() {
                           ? `Decision received ${formatDateTime(r.decided_at)}`
                           : `Assigned ${formatDateTime(r.created_at)}`}
                       </span>
+                      {r.due_at ? (
+                        <span>
+                          {isPendingReview(r)
+                            ? `Due ${formatReviewDueDate(r.due_at)}`
+                            : `Was due ${formatReviewDueDate(r.due_at)}`}
+                        </span>
+                      ) : null}
+                      {r.last_reminder_at ? (
+                        <span>
+                          Last reminder sent {formatDateTime(r.last_reminder_at)}
+                        </span>
+                      ) : null}
                       {r.notes ? <p>{r.notes}</p> : null}
                     </li>
                   );
@@ -405,6 +451,13 @@ export default function AdminSubmissionDetail() {
                   value={assignEmail}
                   onChange={(e) => setAssignEmail(e.target.value)}
                 />
+                <input
+                  className="admin-input"
+                  type="date"
+                  value={assignDueDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setAssignDueDate(e.target.value)}
+                />
                 <button
                   className="admin-btn admin-btn--primary"
                   type="button"
@@ -413,6 +466,9 @@ export default function AdminSubmissionDetail() {
                 >
                   {assigning ? "Assigning..." : "Assign reviewer"}
                 </button>
+                <p className="admin-muted">
+                  Leave the date blank to use the default 14-day review window.
+                </p>
               </div>
             )}
           </section>

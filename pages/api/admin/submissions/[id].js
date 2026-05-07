@@ -1,5 +1,12 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireRole } from "../../../../lib/adminAuth";
+import { respondWithApiError } from "../../../../lib/apiError";
+import { isReviewerWorkflowMetadataMissingError } from "../../../../lib/reviewerWorkflowShared";
+
+const REVIEW_SELECT_FULL =
+  "id, manuscript_id, reviewer_id, recommendation, notes, created_at, invited_at, due_at, last_reminder_at, decided_at";
+const REVIEW_SELECT_LEGACY =
+  "id, manuscript_id, reviewer_id, recommendation, notes, created_at, decided_at";
 
 function parseAuthors(raw) {
   if (!raw) return [];
@@ -54,12 +61,28 @@ export default async function handler(req, res) {
       }
     }
 
-    const { data: reviews } = await supabaseServer
+    let reviewWorkflowMetadataReady = true;
+    let reviewQuery = await supabaseServer
       .from("manuscript_reviews")
-      .select(
-        "id, manuscript_id, reviewer_id, recommendation, notes, created_at, decided_at"
-      )
+      .select(REVIEW_SELECT_FULL)
       .eq("manuscript_id", id);
+
+    if (
+      reviewQuery.error &&
+      isReviewerWorkflowMetadataMissingError(reviewQuery.error)
+    ) {
+      reviewWorkflowMetadataReady = false;
+      reviewQuery = await supabaseServer
+        .from("manuscript_reviews")
+        .select(REVIEW_SELECT_LEGACY)
+        .eq("manuscript_id", id);
+    }
+
+    const { data: reviews, error: reviewErr } = reviewQuery;
+
+    if (reviewErr) {
+      throw reviewErr;
+    }
 
     const reviewerIds = (reviews || [])
       .map((r) => r.reviewer_id)
@@ -84,9 +107,15 @@ export default async function handler(req, res) {
       reviews: reviews || [],
       reviewers: reviewerProfiles,
       role: auth.profile.role,
+      reviewWorkflowMetadataReady,
     });
   } catch (err) {
-    console.error("admin submission detail error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-submission-detail",
+      err,
+      "Failed to load the submission."
+    );
   }
 }

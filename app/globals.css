@@ -3438,6 +3438,11 @@ body {
   gap: 8px;
 }
 
+.admin-card__assignFields {
+  display: grid;
+  gap: 8px;
+}
+
 .admin-input,
 .admin-select,
 .admin-textarea {
@@ -3592,9 +3597,21 @@ body {
   color: #991b1b;
 }
 
+.admin-alert--success {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.08);
+  color: #166534;
+}
+
 .admin-muted {
   font-size: 12px;
   color: #6b7280;
+}
+
+.admin-card__assignFields .admin-muted,
+.admin-inline-form .admin-muted {
+  margin: 0;
+  flex-basis: 100%;
 }
 
 .admin-detail__header {

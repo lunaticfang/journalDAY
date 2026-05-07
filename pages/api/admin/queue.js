@@ -1,5 +1,7 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireRole } from "../../../lib/adminAuth";
+import { respondWithApiError } from "../../../lib/apiError";
+import { isReviewerWorkflowMetadataMissingError } from "../../../lib/reviewerWorkflowShared";
 
 const STATUS_ORDER = [
   "submitted",
@@ -9,6 +11,11 @@ const STATUS_ORDER = [
   "rejected",
   "published",
 ];
+
+const REVIEW_SELECT_FULL =
+  "id, manuscript_id, reviewer_id, recommendation, created_at, invited_at, due_at, last_reminder_at, decided_at";
+const REVIEW_SELECT_LEGACY =
+  "id, manuscript_id, reviewer_id, recommendation, created_at, decided_at";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -44,6 +51,7 @@ export default async function handler(req, res) {
           queue: emptyQueue,
           assignments: {},
           reviewers: [],
+          reviewWorkflowMetadataReady: true,
         });
       }
     }
@@ -65,12 +73,26 @@ export default async function handler(req, res) {
     const ids = (manuscripts || []).map((m) => m.id).filter(Boolean);
     let assignments = {};
     let reviewers = [];
+    let reviewWorkflowMetadataReady = true;
 
     if (ids.length > 0) {
-      const { data: reviews, error: rErr } = await supabaseServer
+      let reviewQuery = await supabaseServer
         .from("manuscript_reviews")
-        .select("id, manuscript_id, reviewer_id, recommendation, created_at")
+        .select(REVIEW_SELECT_FULL)
         .in("manuscript_id", ids);
+
+      if (
+        reviewQuery.error &&
+        isReviewerWorkflowMetadataMissingError(reviewQuery.error)
+      ) {
+        reviewWorkflowMetadataReady = false;
+        reviewQuery = await supabaseServer
+          .from("manuscript_reviews")
+          .select(REVIEW_SELECT_LEGACY)
+          .in("manuscript_id", ids);
+      }
+
+      const { data: reviews, error: rErr } = reviewQuery;
 
       if (rErr) throw rErr;
 
@@ -114,9 +136,15 @@ export default async function handler(req, res) {
       queue,
       assignments,
       reviewers,
+      reviewWorkflowMetadataReady,
     });
   } catch (err) {
-    console.error("admin queue error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-queue",
+      err,
+      "Failed to load the editorial queue."
+    );
   }
 }

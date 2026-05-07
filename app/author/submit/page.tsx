@@ -229,9 +229,10 @@ export default function AuthorSubmitPage() {
         ].join("")
       );
       setTimeout(() => router.push("/author/dashboard"), 1200);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setStatus("Error: " + (err.message || String(err)));
+      const message = err instanceof Error ? err.message : String(err);
+      setStatus("Error: " + message);
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,6 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import {
+  getConfiguredOwnerEmail,
   getOwnerNotificationEmails,
   normalizeEmail,
 } from "../../../lib/accessControl";
@@ -29,6 +30,55 @@ const ALREADY_ADMIN_MESSAGE =
   "This email already has admin access. You can go straight to the admin login page.";
 const COOLDOWN_MESSAGE =
   "Thanks - we received a recent request already. Please wait a little before sending another one.";
+const REQUEST_MIGRATION_REQUIRED_MESSAGE =
+  "Admin access requests are not fully configured yet. Ask the site owner to run the latest database migrations.";
+
+function getErrorMessage(err) {
+  return String(err?.message || err || "").toLowerCase();
+}
+
+function isMissingColumnError(err, tableName, columnNames = []) {
+  const message = getErrorMessage(err);
+  if (!message) return false;
+
+  const normalizedTable = String(tableName || "").toLowerCase();
+  if (normalizedTable && !message.includes(normalizedTable)) {
+    return false;
+  }
+
+  return columnNames.some((columnName) => {
+    const normalizedColumn = String(columnName || "").toLowerCase();
+    return normalizedColumn && message.includes(normalizedColumn);
+  });
+}
+
+function isMissingTableError(err, tableName) {
+  const message = getErrorMessage(err);
+  const normalizedTable = String(tableName || "").toLowerCase();
+  if (!message || !normalizedTable) return false;
+
+  return (
+    message.includes(`relation "public.${normalizedTable}" does not exist`) ||
+    message.includes(`relation "${normalizedTable}" does not exist`) ||
+    message.includes(`table '${normalizedTable}'`) ||
+    message.includes(`table "${normalizedTable}"`) ||
+    message.includes(`from '${normalizedTable}'`) ||
+    message.includes(`from "${normalizedTable}"`)
+  );
+}
+
+function isInvalidEnumValueError(err, value) {
+  const message = getErrorMessage(err);
+  const normalizedValue = String(value || "").toLowerCase();
+  if (!message || !normalizedValue) return false;
+
+  return (
+    message.includes("invalid input value for enum") &&
+    (message.includes(`"${normalizedValue}"`) ||
+      message.includes(`'${normalizedValue}'`) ||
+      message.includes(normalizedValue))
+  );
+}
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -150,7 +200,9 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: existingPrivilegedProfile, error: profileError } =
+    const ownerEmail = normalizeEmail(getConfiguredOwnerEmail());
+
+    let { data: existingPrivilegedProfile, error: profileError } =
       await supabaseServer
         .from("profiles")
         .select("id")
@@ -159,11 +211,24 @@ export default async function handler(req, res) {
         .eq("approved", true)
         .maybeSingle();
 
+    if (profileError && isInvalidEnumValueError(profileError, "owner")) {
+      const fallbackProfileLookup = await supabaseServer
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .eq("role", "admin")
+        .eq("approved", true)
+        .maybeSingle();
+
+      existingPrivilegedProfile = fallbackProfileLookup.data;
+      profileError = fallbackProfileLookup.error;
+    }
+
     if (profileError) {
       throw profileError;
     }
 
-    if (existingPrivilegedProfile?.id) {
+    if (existingPrivilegedProfile?.id || (ownerEmail && email === ownerEmail)) {
       return res.status(200).json({
         ok: true,
         already_admin: true,
@@ -171,7 +236,11 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: recentEmailRequests, error: recentEmailError } =
+    let compatibilityMode = false;
+    let requestStatusColumnsAvailable = true;
+    let recentEmailRequests = [];
+
+    const { data: recentEmailData, error: recentEmailError } =
       await supabaseServer
         .from("admin_access_requests")
         .select("id, status, created_at")
@@ -180,10 +249,47 @@ export default async function handler(req, res) {
         .limit(5);
 
     if (recentEmailError) {
-      throw recentEmailError;
+      if (isMissingTableError(recentEmailError, "admin_access_requests")) {
+        return res.status(409).json({
+          error: REQUEST_MIGRATION_REQUIRED_MESSAGE,
+          migrationRequired: true,
+        });
+      }
+
+      if (
+        isMissingColumnError(recentEmailError, "admin_access_requests", [
+          "status",
+          "created_at",
+        ])
+      ) {
+        requestStatusColumnsAvailable = false;
+        compatibilityMode = true;
+
+        const { data: legacyEmailData, error: legacyEmailError } = await supabaseServer
+          .from("admin_access_requests")
+          .select("id")
+          .eq("email", email)
+          .limit(5);
+
+        if (legacyEmailError) {
+          if (isMissingTableError(legacyEmailError, "admin_access_requests")) {
+            return res.status(409).json({
+              error: REQUEST_MIGRATION_REQUIRED_MESSAGE,
+              migrationRequired: true,
+            });
+          }
+          throw legacyEmailError;
+        }
+
+        recentEmailRequests = legacyEmailData || [];
+      } else {
+        throw recentEmailError;
+      }
+    } else {
+      recentEmailRequests = recentEmailData || [];
     }
 
-    const latestEmailRequest = (recentEmailRequests || [])[0] || null;
+    const latestEmailRequest = recentEmailRequests[0] || null;
     if (latestEmailRequest?.status === "pending") {
       return res.status(200).json({
         ok: true,
@@ -192,7 +298,7 @@ export default async function handler(req, res) {
       });
     }
 
-    if (latestEmailRequest?.status === "invited") {
+    if (requestStatusColumnsAvailable && latestEmailRequest?.status === "invited") {
       const { data: activeInvite, error: inviteLookupError } = await supabaseServer
         .from("admin_invites")
         .select("id")
@@ -203,10 +309,18 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (inviteLookupError) {
-        throw inviteLookupError;
+        if (isMissingTableError(inviteLookupError, "admin_invites")) {
+          console.warn(
+            "admin_invites table missing; skipping active invite duplicate check"
+          );
+        } else {
+          throw inviteLookupError;
+        }
       }
 
-      if (activeInvite?.id) {
+      if (inviteLookupError && isMissingTableError(inviteLookupError, "admin_invites")) {
+        // continue without invite dedupe when legacy schema is still in place
+      } else if (activeInvite?.id) {
         return res.status(200).json({
           ok: true,
           duplicate: true,
@@ -215,7 +329,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (latestEmailRequest?.created_at) {
+    if (requestStatusColumnsAvailable && latestEmailRequest?.created_at) {
       const latestEmailRequestTime = new Date(latestEmailRequest.created_at).getTime();
       if (
         Number.isFinite(latestEmailRequestTime) &&
@@ -224,6 +338,8 @@ export default async function handler(req, res) {
         return res.status(429).json({ error: COOLDOWN_MESSAGE });
       }
     }
+
+    let antispamColumnsAvailable = requestStatusColumnsAvailable;
 
     if (clientFingerprint) {
       const windowStart = new Date(
@@ -239,29 +355,46 @@ export default async function handler(req, res) {
         .limit(ADMIN_REQUEST_IP_MAX_REQUESTS_PER_WINDOW);
 
       if (recentIpError) {
-        throw recentIpError;
-      }
-
-      const mostRecentIpRequest = (recentIpRequests || [])[0];
-      if (mostRecentIpRequest?.created_at) {
-        const mostRecentIpTime = new Date(mostRecentIpRequest.created_at).getTime();
         if (
-          Number.isFinite(mostRecentIpTime) &&
-          now.getTime() - mostRecentIpTime < ADMIN_REQUEST_IP_MIN_INTERVAL_MS
+          isMissingColumnError(recentIpError, "admin_access_requests", [
+            "ip_fingerprint",
+            "created_at",
+          ])
         ) {
-          return res.status(429).json({ error: COOLDOWN_MESSAGE });
+          antispamColumnsAvailable = false;
+          compatibilityMode = true;
+        } else if (isMissingTableError(recentIpError, "admin_access_requests")) {
+          return res.status(409).json({
+            error: REQUEST_MIGRATION_REQUIRED_MESSAGE,
+            migrationRequired: true,
+          });
+        } else {
+          throw recentIpError;
         }
       }
 
-      if ((recentIpRequests || []).length >= ADMIN_REQUEST_IP_MAX_REQUESTS_PER_WINDOW) {
-        return res.status(429).json({
-          error:
-            "We have already received several recent requests from this network. Please try again a little later.",
-        });
+      if (antispamColumnsAvailable) {
+        const mostRecentIpRequest = (recentIpRequests || [])[0];
+        if (mostRecentIpRequest?.created_at) {
+          const mostRecentIpTime = new Date(mostRecentIpRequest.created_at).getTime();
+          if (
+            Number.isFinite(mostRecentIpTime) &&
+            now.getTime() - mostRecentIpTime < ADMIN_REQUEST_IP_MIN_INTERVAL_MS
+          ) {
+            return res.status(429).json({ error: COOLDOWN_MESSAGE });
+          }
+        }
+
+        if ((recentIpRequests || []).length >= ADMIN_REQUEST_IP_MAX_REQUESTS_PER_WINDOW) {
+          return res.status(429).json({
+            error:
+              "We have already received several recent requests from this network. Please try again a little later.",
+          });
+        }
       }
     }
 
-    const record = {
+    const fullRecord = {
       name,
       email,
       message,
@@ -269,13 +402,79 @@ export default async function handler(req, res) {
       ip_fingerprint: clientFingerprint,
       user_agent: userAgent,
     };
+    const fallbackRecord = {
+      name,
+      email,
+      message,
+      status: "pending",
+    };
+    const legacyRecord = {
+      name,
+      email,
+      message,
+    };
 
-    const { error: insertErr } = await supabaseServer
+    let insertErr = null;
+    let insertedWithFallbackRecord = false;
+    let insertedWithLegacyRecord = false;
+
+    const { error: insertFullErr } = await supabaseServer
       .from("admin_access_requests")
-      .insert(record);
+      .insert(fullRecord);
+
+    insertErr = insertFullErr;
+
+    if (
+      insertErr &&
+      isMissingColumnError(insertErr, "admin_access_requests", [
+        "ip_fingerprint",
+        "user_agent",
+      ])
+    ) {
+      antispamColumnsAvailable = false;
+      insertedWithFallbackRecord = true;
+      const { error: insertFallbackErr } = await supabaseServer
+        .from("admin_access_requests")
+        .insert(fallbackRecord);
+      insertErr = insertFallbackErr;
+    }
+
+    if (
+      insertErr &&
+      isMissingColumnError(insertErr, "admin_access_requests", [
+        "status",
+      ])
+    ) {
+      antispamColumnsAvailable = false;
+      compatibilityMode = true;
+      insertedWithLegacyRecord = true;
+      const { error: insertLegacyErr } = await supabaseServer
+        .from("admin_access_requests")
+        .insert(legacyRecord);
+      insertErr = insertLegacyErr;
+    }
 
     if (insertErr) {
+      if (isMissingTableError(insertErr, "admin_access_requests")) {
+        return res.status(409).json({
+          error: REQUEST_MIGRATION_REQUIRED_MESSAGE,
+          migrationRequired: true,
+        });
+      }
+
       throw insertErr;
+    }
+
+    if (insertedWithFallbackRecord) {
+      console.warn(
+        "admin_access_requests fallback insert used because anti-spam columns are missing"
+      );
+    }
+
+    if (insertedWithLegacyRecord) {
+      console.warn(
+        "admin_access_requests legacy insert used because workflow columns are missing"
+      );
     }
 
     let emailed = false;
@@ -294,6 +493,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       emailed,
+      compatibility_mode: compatibilityMode || !antispamColumnsAvailable,
       message: emailed
         ? "Request submitted. The owner has been notified and can invite you if approved."
         : GENERIC_SUCCESS_MESSAGE,
@@ -304,7 +504,10 @@ export default async function handler(req, res) {
       500,
       "admin-request-access",
       err,
-      "Failed to submit admin access request."
+      "Failed to submit admin access request.",
+      {
+        email: normalizeEmail(req.body?.email),
+      }
     );
   }
 }

@@ -58,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       500,
       "admin-users-demote-update",
       updateErr,
-      "Failed to revoke admin."
+      "Failed to revoke elevated access."
     );
   }
 

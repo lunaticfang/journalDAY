@@ -14,8 +14,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!auth) return;
 
   const userId = String(req.body?.userId || "").trim();
+  const targetRole = String(req.body?.role || "admin")
+    .trim()
+    .toLowerCase();
   if (!userId) {
     return res.status(400).json({ error: "Missing userId" });
+  }
+
+  if (!["admin", "reviewer"].includes(targetRole)) {
+    return res.status(400).json({ error: "Invalid target role" });
   }
 
   const { data: existing, error: existingErr } = await supabaseServer
@@ -43,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { data: updated, error: updateErr } = await supabaseServer
     .from("profiles")
-    .update({ role: "admin", approved: true })
+    .update({ role: targetRole, approved: true })
     .eq("id", userId)
     .select("id, email, role, approved")
     .maybeSingle();
@@ -54,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       500,
       "admin-users-promote-update",
       updateErr,
-      "Failed to promote user."
+      `Failed to approve user as ${targetRole}.`
     );
   }
 
