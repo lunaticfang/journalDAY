@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
+import { getCurrentClientAccess } from "../../../lib/clientPermissions";
 
 type Issue = {
   id: string;
@@ -55,6 +57,51 @@ function formatAuthors(raw: string | null) {
   return raw;
 }
 
+function parseAuthorNames(raw: string | null) {
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => {
+          if (!item) return "";
+          if (typeof item === "string") return item.trim();
+          if (typeof item === "object") {
+            return String(item.name || item.email || "").trim();
+          }
+          return "";
+        })
+        .filter(Boolean);
+    }
+  } catch {
+    // raw may be plain text
+  }
+
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function buildAuthorsPayload(leadAuthor: string, coAuthorsInput: string) {
+  const lead = leadAuthor.trim();
+  const coAuthors = coAuthorsInput
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const allNames = [lead, ...coAuthors].filter(Boolean);
+  if (!allNames.length) {
+    return null;
+  }
+
+  return allNames.map((name, index) => ({
+    name,
+    role: index === 0 ? "corresponding" : "coauthor",
+  }));
+}
+
 export default function IssuePage({
   initialIssue = null,
   initialArticles = [],
@@ -73,6 +120,12 @@ export default function IssuePage({
   const [loading, setLoading] = useState(!initialIssue);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [isEditor, setIsEditor] = useState(false);
+  const [editingAuthorsArticleId, setEditingAuthorsArticleId] = useState<string | null>(null);
+  const [authorLeadDraft, setAuthorLeadDraft] = useState("");
+  const [authorCoDraft, setAuthorCoDraft] = useState("");
+  const [authorSaveError, setAuthorSaveError] = useState<string | null>(null);
+  const [authorSaving, setAuthorSaving] = useState(false);
 
   async function handleViewPdf(manuscriptId: string) {
     try {
@@ -98,6 +151,82 @@ export default function IssuePage({
       );
     }
   }
+
+  function startEditingAuthors(article: Article) {
+    const names = parseAuthorNames(article.authors || null);
+    const [lead = "", ...coAuthors] = names;
+
+    setAuthorLeadDraft(lead);
+    setAuthorCoDraft(coAuthors.join(", "));
+    setAuthorSaveError(null);
+    setEditingAuthorsArticleId(article.id);
+  }
+
+  async function handleSaveAuthors(articleId: string) {
+    if (!issue?.id) return;
+
+    try {
+      setAuthorSaving(true);
+      setAuthorSaveError(null);
+
+      const payload = buildAuthorsPayload(authorLeadDraft, authorCoDraft);
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      if (!token) {
+        throw new Error("Please sign in again to update author details.");
+      }
+
+      const resp = await fetch(`/api/issues/${issue.id}/articles/${articleId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          authors: payload,
+        }),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(json?.error || "Could not update authors.");
+      }
+
+      const nextAuthors =
+        Array.isArray(payload) && payload.length > 0 ? JSON.stringify(payload) : null;
+
+      setArticles((prev) =>
+        prev.map((article) =>
+          article.id === articleId ? { ...article, authors: nextAuthors } : article
+        )
+      );
+      setEditingAuthorsArticleId(null);
+      setAuthorLeadDraft("");
+      setAuthorCoDraft("");
+    } catch (err) {
+      console.error("IssuePage save authors error:", err);
+      setAuthorSaveError(
+        err instanceof Error ? err.message : "Could not update author details."
+      );
+    } finally {
+      setAuthorSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const access = await getCurrentClientAccess(["admin", "editor"]);
+      if (!mounted) return;
+      setIsEditor(Boolean(access.allowed));
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +386,122 @@ export default function IssuePage({
                         {formatAuthors(article.authors)}
                       </p>
                     )}
+
+                    {isEditor && (
+                      <div style={{ marginBottom: 10 }}>
+                        {editingAuthorsArticleId === article.id ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 8,
+                              padding: 10,
+                              border: "1px solid rgba(106,50,145,0.18)",
+                              borderRadius: 10,
+                              background: "rgba(106,50,145,0.04)",
+                            }}
+                          >
+                            <input
+                              type="text"
+                              placeholder="Lead author"
+                              value={authorLeadDraft}
+                              onChange={(event) =>
+                                setAuthorLeadDraft(event.target.value)
+                              }
+                              style={{
+                                border: "1px solid #d1d5db",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                fontSize: 13,
+                              }}
+                            />
+                            <input
+                              type="text"
+                              placeholder="Co-authors (comma separated)"
+                              value={authorCoDraft}
+                              onChange={(event) => setAuthorCoDraft(event.target.value)}
+                              style={{
+                                border: "1px solid #d1d5db",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                fontSize: 13,
+                              }}
+                            />
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleSaveAuthors(article.id);
+                                }}
+                                disabled={authorSaving}
+                                style={{
+                                  border: "none",
+                                  borderRadius: 999,
+                                  padding: "6px 12px",
+                                  background: "#6A3291",
+                                  color: "#fff",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: authorSaving ? "default" : "pointer",
+                                }}
+                              >
+                                {authorSaving ? "Saving..." : "Save authors"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingAuthorsArticleId(null);
+                                  setAuthorSaveError(null);
+                                }}
+                                disabled={authorSaving}
+                                style={{
+                                  border: "1px solid #d1d5db",
+                                  borderRadius: 999,
+                                  padding: "6px 12px",
+                                  background: "#fff",
+                                  color: "#374151",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: authorSaving ? "default" : "pointer",
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {authorSaveError && (
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: 12,
+                                  color: "#b91c1c",
+                                }}
+                              >
+                                {authorSaveError}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              startEditingAuthors(article);
+                            }}
+                            style={{
+                              border: "1px solid rgba(106,50,145,0.3)",
+                              borderRadius: 999,
+                              padding: "4px 10px",
+                              background: "rgba(106,50,145,0.08)",
+                              color: "#6A3291",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Edit authors
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {article.abstract && (
                       <p className="publication-card__abstract">
                         {article.abstract}

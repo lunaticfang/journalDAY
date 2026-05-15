@@ -150,6 +150,8 @@ export default async function handler(req, res) {
   }
 
   try {
+    let compatibilityMode = false;
+
     const name = String(req.body?.name || "").trim();
     const email = normalizeEmail(req.body?.email);
     const message = String(req.body?.message || "").trim();
@@ -211,6 +213,35 @@ export default async function handler(req, res) {
         .eq("approved", true)
         .maybeSingle();
 
+    if (
+      profileError &&
+      (isMissingTableError(profileError, "profiles") ||
+        isMissingColumnError(profileError, "profiles", ["role", "approved"]))
+    ) {
+      compatibilityMode = true;
+      existingPrivilegedProfile = null;
+
+      // Legacy profile schemas may not have role/approved columns yet.
+      const fallbackProfileLookup = await supabaseServer
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (fallbackProfileLookup.error) {
+        if (
+          isMissingTableError(fallbackProfileLookup.error, "profiles") ||
+          isMissingColumnError(fallbackProfileLookup.error, "profiles", ["email"])
+        ) {
+          existingPrivilegedProfile = null;
+        } else {
+          profileError = fallbackProfileLookup.error;
+        }
+      } else {
+        profileError = null;
+      }
+    }
+
     if (profileError && isInvalidEnumValueError(profileError, "owner")) {
       const fallbackProfileLookup = await supabaseServer
         .from("profiles")
@@ -236,7 +267,6 @@ export default async function handler(req, res) {
       });
     }
 
-    let compatibilityMode = false;
     let requestStatusColumnsAvailable = true;
     let recentEmailRequests = [];
 
@@ -260,6 +290,7 @@ export default async function handler(req, res) {
         isMissingColumnError(recentEmailError, "admin_access_requests", [
           "status",
           "created_at",
+          "email",
         ])
       ) {
         requestStatusColumnsAvailable = false;
@@ -309,7 +340,15 @@ export default async function handler(req, res) {
         .maybeSingle();
 
       if (inviteLookupError) {
-        if (isMissingTableError(inviteLookupError, "admin_invites")) {
+        if (
+          isMissingTableError(inviteLookupError, "admin_invites") ||
+          isMissingColumnError(inviteLookupError, "admin_invites", [
+            "status",
+            "expires_at",
+            "email",
+          ])
+        ) {
+          compatibilityMode = true;
           console.warn(
             "admin_invites table missing; skipping active invite duplicate check"
           );
@@ -318,7 +357,15 @@ export default async function handler(req, res) {
         }
       }
 
-      if (inviteLookupError && isMissingTableError(inviteLookupError, "admin_invites")) {
+      if (
+        inviteLookupError &&
+        (isMissingTableError(inviteLookupError, "admin_invites") ||
+          isMissingColumnError(inviteLookupError, "admin_invites", [
+            "status",
+            "expires_at",
+            "email",
+          ]))
+      ) {
         // continue without invite dedupe when legacy schema is still in place
       } else if (activeInvite?.id) {
         return res.status(200).json({
