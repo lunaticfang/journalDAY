@@ -80,6 +80,21 @@ function isInvalidEnumValueError(err, value) {
   );
 }
 
+function isSchemaCompatibilityError(err) {
+  const message = getErrorMessage(err);
+  if (!message) return false;
+
+  return (
+    message.includes("schema cache") ||
+    message.includes("does not exist") ||
+    message.includes("column") ||
+    message.includes("relation") ||
+    message.includes("admin_access_requests") ||
+    message.includes("admin_invites") ||
+    message.includes("profiles")
+  );
+}
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -143,11 +158,51 @@ async function notifyOwner({ name, email, message, createdAt }) {
   return true;
 }
 
+async function persistLegacyAdminRequest({
+  name,
+  email,
+  message,
+  createdAt,
+  clientFingerprint,
+  userAgent,
+}) {
+  const key = `admin_access_request.${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+
+  const value = JSON.stringify({
+    name,
+    email,
+    message,
+    status: "pending",
+    created_at: createdAt,
+    ip_fingerprint: clientFingerprint || null,
+    user_agent: userAgent || null,
+    compatibility_mode: true,
+  });
+
+  const { error } = await supabaseServer.from("site_content").insert({ key, value });
+  if (error) {
+    throw error;
+  }
+
+  return key;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const fallbackContext = {
+    name: "",
+    email: "",
+    message: "",
+    createdAt: "",
+    clientFingerprint: "",
+    userAgent: "",
+  };
 
   try {
     let compatibilityMode = false;
@@ -160,6 +215,12 @@ export default async function handler(req, res) {
     const createdAt = now.toISOString();
     const clientFingerprint = getAdminRequestClientFingerprint(req);
     const userAgent = getAdminRequestUserAgent(req);
+    fallbackContext.name = name;
+    fallbackContext.email = email;
+    fallbackContext.message = message;
+    fallbackContext.createdAt = createdAt;
+    fallbackContext.clientFingerprint = clientFingerprint || "";
+    fallbackContext.userAgent = userAgent || "";
 
     // Hidden honeypot: real users never interact with this field.
     if (website) {
@@ -546,6 +607,38 @@ export default async function handler(req, res) {
         : GENERIC_SUCCESS_MESSAGE,
     });
   } catch (err) {
+    if (isSchemaCompatibilityError(err)) {
+      try {
+        await persistLegacyAdminRequest({
+          name: fallbackContext.name,
+          email: fallbackContext.email,
+          message: fallbackContext.message,
+          createdAt: fallbackContext.createdAt || new Date().toISOString(),
+          clientFingerprint: fallbackContext.clientFingerprint || null,
+          userAgent: fallbackContext.userAgent || null,
+        });
+      } catch (legacyErr) {
+        console.error("admin request legacy persistence error:", legacyErr);
+      }
+
+      try {
+        await notifyOwner({
+          name: fallbackContext.name || "Not provided",
+          email: fallbackContext.email,
+          message: fallbackContext.message || "No reason provided.",
+          createdAt: fallbackContext.createdAt || new Date().toISOString(),
+        });
+      } catch (emailErr) {
+        console.error("admin request compatibility email error:", emailErr);
+      }
+
+      return res.status(200).json({
+        ok: true,
+        compatibility_mode: true,
+        message: GENERIC_SUCCESS_MESSAGE,
+      });
+    }
+
     return respondWithApiError(
       res,
       500,
