@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
@@ -14,15 +14,6 @@ import {
 import PasswordField from "../../components/PasswordField";
 
 type AuthMode = "signin" | "signup";
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  fontSize: 14,
-  borderRadius: 8,
-  border: "1px solid #d1d5db",
-  outline: "none",
-};
 
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("signin");
@@ -153,7 +144,7 @@ export default function LoginPage() {
       }
 
       setStatus(
-        "If this email is new, check your inbox once to verify it. If you have already signed up with this email, another account was not created — switch to Sign in or use Forgot password instead."
+        "If this email is new, check your inbox once to verify it. If you have already signed up with this email, another account was not created - switch to Sign in or use Forgot password instead."
       );
       setMode("signin");
       setEmail(normalizedEmail);
@@ -203,210 +194,137 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <main style={{ maxWidth: 640, margin: "40px auto" }}>
-        <p>Checking session...</p>
+      <main className="auth-shell">
+        <section className="auth-card auth-card--wide">
+          <p className="auth-subtitle" style={{ marginBottom: 0 }}>
+            Checking session...
+          </p>
+        </section>
       </main>
     );
   }
 
   return (
-    <main style={{ maxWidth: 640, margin: "40px auto" }}>
-      <h1 style={{ fontSize: 22, marginBottom: 12 }}>
-        Sign in to <span style={{ color: "#6A3291" }}>UpDAYtes</span>
-      </h1>
+    <main className="auth-shell">
+      <section className="auth-card auth-card--wide">
+        <h1 className="auth-title">
+          Sign in to <span style={{ color: "#6A3291" }}>UpDAYtes</span>
+        </h1>
 
-      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
-        Authors now sign in with email and password. Email verification is only used once when creating a new account.
-      </p>
+        <p className="auth-subtitle">
+          Authors now sign in with email and password. Email verification is only used once when creating a new account.
+        </p>
 
-      <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 16, lineHeight: 1.6 }}>
-        Password policy: {PASSWORD_POLICY_HINT}
-      </p>
+        <p className="auth-hint">
+          Password policy: {PASSWORD_POLICY_HINT}
+        </p>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 18, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("signin");
-            setErrorMsg("");
-            setStatus("");
-          }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 999,
-            border: mode === "signin" ? "1px solid #6A3291" : "1px solid #d1d5db",
-            background: mode === "signin" ? "#6A3291" : "#ffffff",
-            color: mode === "signin" ? "#ffffff" : "#111827",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setMode("signup");
-            setErrorMsg("");
-            setStatus("");
-          }}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 999,
-            border: mode === "signup" ? "1px solid #6A3291" : "1px solid #d1d5db",
-            background: mode === "signup" ? "#6A3291" : "#ffffff",
-            color: mode === "signup" ? "#ffffff" : "#111827",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Create account
-        </button>
-      </div>
-
-      {errorMsg && (
-        <div
-          style={{
-            background: "#fee2e2",
-            color: "#991b1b",
-            padding: "10px 12px",
-            borderRadius: 8,
-            fontSize: 13,
-            marginBottom: 12,
-          }}
-        >
-          {errorMsg}
-        </div>
-      )}
-
-      {status && (
-        <div
-          style={{
-            background: "#ecfdf5",
-            color: "#166534",
-            padding: "10px 12px",
-            borderRadius: 8,
-            fontSize: 13,
-            marginBottom: 12,
-          }}
-        >
-          {status}
-        </div>
-      )}
-
-      {mode === "signin" ? (
-        <form onSubmit={handleSignIn} style={{ display: "grid", gap: 12 }}>
-          <input
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            spellCheck={false}
-            style={inputStyle}
-          />
-          <PasswordField
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            inputStyle={inputStyle}
-          />
+        <div className="auth-tabs">
           <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              background: "#6A3291",
-              color: "white",
-              border: "none",
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
+            type="button"
+            onClick={() => {
+              setMode("signin");
+              setErrorMsg("");
+              setStatus("");
             }}
+            className={`auth-tab ${mode === "signin" ? "is-active" : ""}`}
           >
-            {loading ? "Signing in..." : "Sign in"}
+            Sign in
           </button>
           <button
             type="button"
-            disabled={recoveryLoading}
             onClick={() => {
-              void handleForgotPassword();
+              setMode("signup");
+              setErrorMsg("");
+              setStatus("");
             }}
-            style={{
-              justifySelf: "start",
-              padding: 0,
-              border: "none",
-              background: "transparent",
-              color: "#6A3291",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: recoveryLoading ? "not-allowed" : "pointer",
-            }}
+            className={`auth-tab ${mode === "signup" ? "is-active" : ""}`}
           >
-            {recoveryLoading ? "Sending reset link..." : "Forgot password?"}
+            Create account
           </button>
-        </form>
-      ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          <div
-            style={{
-              background: "#f8f5fc",
-              border: "1px solid #e9def3",
-              color: "#4b5563",
-              padding: "10px 12px",
-              borderRadius: 8,
-              fontSize: 13,
-              lineHeight: 1.6,
-            }}
-          >
-            If this email was already used before, a second account will not be created.
-            In that case, use <strong>Sign in</strong> or <strong>Forgot password?</strong>
-            after switching back to the sign-in tab.
-          </div>
+        </div>
 
-          <form onSubmit={handleSignUp} style={{ display: "grid", gap: 12 }}>
+        {errorMsg && (
+          <div className="auth-alert auth-alert--error">
+            {errorMsg}
+          </div>
+        )}
+
+        {status && (
+          <div className="auth-alert auth-alert--success">
+            {status}
+          </div>
+        )}
+
+        {mode === "signin" ? (
+          <form onSubmit={handleSignIn} className="auth-form">
             <input
               type="email"
               placeholder="you@example.com"
-              value={signupEmail}
-              onChange={(e) => setSignupEmail(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
               spellCheck={false}
-              style={inputStyle}
+              className="auth-input"
             />
             <PasswordField
-              placeholder="Create password"
-              value={signupPassword}
-              onChange={(e) => setSignupPassword(e.target.value)}
-              autoComplete="new-password"
-              inputStyle={inputStyle}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
             />
-            <PasswordField
-              placeholder="Confirm password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              inputStyle={inputStyle}
-            />
+            <button type="submit" disabled={loading} className="auth-btn">
+              {loading ? "Signing in..." : "Sign in"}
+            </button>
             <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                background: "#6A3291",
-                color: "white",
-                border: "none",
-                fontWeight: 600,
-                cursor: loading ? "not-allowed" : "pointer",
+              type="button"
+              disabled={recoveryLoading}
+              onClick={() => {
+                void handleForgotPassword();
               }}
+              className="auth-inline-link"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {recoveryLoading ? "Sending reset link..." : "Forgot password?"}
             </button>
           </form>
-        </div>
-      )}
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div className="auth-alert auth-alert--neutral" style={{ marginBottom: 0 }}>
+              If this email was already used before, a second account will not be created.
+              In that case, use <strong>Sign in</strong> or <strong>Forgot password?</strong>
+              after switching back to the sign-in tab.
+            </div>
+
+            <form onSubmit={handleSignUp} className="auth-form">
+              <input
+                type="email"
+                placeholder="you@example.com"
+                value={signupEmail}
+                onChange={(e) => setSignupEmail(e.target.value)}
+                autoComplete="username"
+                spellCheck={false}
+                className="auth-input"
+              />
+              <PasswordField
+                placeholder="Create password"
+                value={signupPassword}
+                onChange={(e) => setSignupPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+              <PasswordField
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+              <button type="submit" disabled={loading} className="auth-btn">
+                {loading ? "Creating account..." : "Create account"}
+              </button>
+            </form>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
+

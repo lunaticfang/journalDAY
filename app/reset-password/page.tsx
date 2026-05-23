@@ -10,15 +10,6 @@ import {
 } from "../../lib/authSecurity";
 import PasswordField from "../components/PasswordField";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  fontSize: 14,
-  borderRadius: 8,
-  border: "1px solid #d1d5db",
-  outline: "none",
-};
-
 export default function ResetPasswordPage() {
   const router = useRouter();
 
@@ -111,131 +102,69 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main
-      style={{
-        maxWidth: 480,
-        margin: "80px auto",
-        padding: 24,
-        background: "#ffffff",
-        borderRadius: 12,
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: 24,
-          fontWeight: 700,
-          marginBottom: 8,
-          textAlign: "center",
-        }}
-      >
-        Set a new password
-      </h1>
+    <main className="auth-shell">
+      <section className="auth-card">
+        <h1 className="auth-title">Set a new password</h1>
 
-      <p
-        style={{
-          fontSize: 13,
-          color: "#6b7280",
-          marginBottom: 20,
-          textAlign: "center",
-          lineHeight: 1.6,
-        }}
-      >
-        Use the recovery link from your email once, then choose a new password here.
-      </p>
+        <p className="auth-subtitle">
+          Use the recovery link from your email once, then choose a new password here.
+        </p>
 
-      <p
-        style={{
-          fontSize: 12,
-          color: "#6b7280",
-          marginBottom: 20,
-          textAlign: "center",
-          lineHeight: 1.6,
-        }}
-      >
-        Password policy: {PASSWORD_POLICY_HINT}
-      </p>
+        <p className="auth-hint">
+          Password policy: {PASSWORD_POLICY_HINT}
+        </p>
 
-      {errorMsg && (
-        <div
-          style={{
-            background: "#fee2e2",
-            color: "#991b1b",
-            padding: "10px 12px",
-            borderRadius: 8,
-            fontSize: 13,
-            marginBottom: 12,
-          }}
-        >
-          {errorMsg}
-        </div>
-      )}
-
-      {statusMsg && (
-        <div
-          style={{
-            background: "#ecfdf5",
-            color: "#166534",
-            padding: "10px 12px",
-            borderRadius: 8,
-            fontSize: 13,
-            marginBottom: 12,
-          }}
-        >
-          {statusMsg}
-        </div>
-      )}
-
-      {checking ? (
-        <p style={{ margin: 0, color: "#6b7280" }}>Checking your recovery link...</p>
-      ) : hasRecoveryAccess ? (
-        <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-          <PasswordField
-            placeholder="New password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="new-password"
-            inputStyle={inputStyle}
-          />
-          <PasswordField
-            placeholder="Confirm new password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            autoComplete="new-password"
-            inputStyle={inputStyle}
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 8,
-              background: "#6A3291",
-              color: "white",
-              border: "none",
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Updating password..." : "Update password"}
-          </button>
-        </form>
-      ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          <p style={{ margin: 0, color: "#4b5563", lineHeight: 1.6 }}>
-            We could not detect an active recovery session yet. Open the password reset
-            email on this device and browser, then try again.
-          </p>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/login/author" style={{ color: "#6A3291", fontWeight: 600 }}>
-              Author login
-            </Link>
-            <Link href="/admin/login" style={{ color: "#6A3291", fontWeight: 600 }}>
-              Admin login
-            </Link>
+        {errorMsg && (
+          <div className="auth-alert auth-alert--error">
+            {errorMsg}
           </div>
-        </div>
-      )}
+        )}
+
+        {statusMsg && (
+          <div className="auth-alert auth-alert--success">
+            {statusMsg}
+          </div>
+        )}
+
+        {checking ? (
+          <p className="auth-subtitle" style={{ marginBottom: 0 }}>
+            Checking your recovery link...
+          </p>
+        ) : hasRecoveryAccess ? (
+          <form onSubmit={handleSubmit} className="auth-form">
+            <PasswordField
+              placeholder="New password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="new-password"
+            />
+            <PasswordField
+              placeholder="Confirm new password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              autoComplete="new-password"
+            />
+            <button type="submit" disabled={loading} className="auth-btn">
+              {loading ? "Updating password..." : "Update password"}
+            </button>
+          </form>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <p className="auth-subtitle" style={{ textAlign: "left", marginBottom: 0 }}>
+              We could not detect an active recovery session yet. Open the password reset
+              email on this device and browser, then try again.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }} className="auth-link-list">
+              <Link href="/login/author">
+                Author login
+              </Link>
+              <Link href="/admin/login">
+                Admin login
+              </Link>
+            </div>
+          </div>
+        )}
+      </section>
     </main>
   );
 }

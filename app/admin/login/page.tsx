@@ -135,176 +135,81 @@ export default function AdminLoginPage() {
 
   if (checkingSession) {
     return (
-      <main
-        style={{
-          maxWidth: 420,
-          margin: "80px auto",
-          padding: 24,
-          background: "#ffffff",
-          borderRadius: 8,
-          border: "1px solid #e5e7eb",
-        }}
-      >
-        <p style={{ margin: 0, color: "#6b7280" }}>Checking session...</p>
+      <main className="auth-shell">
+        <section className="auth-card">
+          <p className="auth-subtitle" style={{ marginBottom: 0 }}>
+            Checking session...
+          </p>
+        </section>
       </main>
     );
   }
 
   return (
-    <main
-      style={{
-        maxWidth: 420,
-        margin: "80px auto",
-        padding: 24,
-        background: "#ffffff",
-        borderRadius: 8,
-        border: "1px solid #e5e7eb",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: 22,
-          fontWeight: 600,
-          marginBottom: 6,
-          textAlign: "center",
-        }}
-      >
-        Admin Login
-      </h1>
+    <main className="auth-shell">
+      <section className="auth-card">
+        <h1 className="auth-title">Admin Login</h1>
 
-      <p
-        style={{
-          fontSize: 13,
-          color: "#6b7280",
-          marginBottom: 20,
-          textAlign: "center",
-          lineHeight: 1.6,
-        }}
-      >
-        Approved staff sign in with email and password. New admins are still added through the existing request and invite flow.
-      </p>
+        <p className="auth-subtitle">
+          Approved staff sign in with email and password. New admins are still added through the existing request and invite flow.
+        </p>
 
-      {errorMsg && (
-        <div
-          style={{
-            background: "#fee2e2",
-            color: "#991b1b",
-            padding: "8px 12px",
-            borderRadius: 6,
-            fontSize: 13,
-            marginBottom: 12,
-          }}
-        >
-          {errorMsg}
-        </div>
-      )}
+        {errorMsg && (
+          <div className="auth-alert auth-alert--error">
+            {errorMsg}
+          </div>
+        )}
 
-      {statusMsg && (
-        <div
-          style={{
-            background: "#ecfdf5",
-            color: "#166534",
-            padding: "8px 12px",
-            borderRadius: 6,
-            fontSize: 13,
-            marginBottom: 12,
-          }}
-        >
-          {statusMsg}
-        </div>
-      )}
+        {statusMsg && (
+          <div className="auth-alert auth-alert--success">
+            {statusMsg}
+          </div>
+        )}
 
-      <form onSubmit={handleLogin}>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 13 }}>Email</label>
-          <input
-            type="email"
+        <form onSubmit={handleLogin} className="auth-form">
+          <div className="auth-field">
+            <label>Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              spellCheck={false}
+              className="auth-input"
+            />
+          </div>
+
+          <PasswordField
+            label="Password"
             required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            spellCheck={false}
-            style={inputStyle}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
           />
-        </div>
 
-        <PasswordField
-          label="Password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-          inputStyle={inputStyle}
-          containerStyle={{ marginBottom: 16 }}
-        />
+          <button type="submit" disabled={loading} className="auth-btn">
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
 
         <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: "10px 0",
-            borderRadius: 6,
-            border: "none",
-            background: "#6A3291",
-            color: "white",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: loading ? "not-allowed" : "pointer",
+          type="button"
+          disabled={recoveryLoading}
+          onClick={() => {
+            void handleForgotPassword();
           }}
+          className="auth-inline-link"
         >
-          {loading ? "Signing in..." : "Sign in"}
+          {recoveryLoading ? "Sending reset link..." : "Forgot password?"}
         </button>
-      </form>
 
-      <button
-        type="button"
-        disabled={recoveryLoading}
-        onClick={() => {
-          void handleForgotPassword();
-        }}
-        style={{
-          marginTop: 12,
-          padding: 0,
-          border: "none",
-          background: "transparent",
-          color: "#6A3291",
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: recoveryLoading ? "not-allowed" : "pointer",
-        }}
-      >
-        {recoveryLoading ? "Sending reset link..." : "Forgot password?"}
-      </button>
-
-      <p style={{ marginTop: 10, fontSize: 13 }}>
-        <Link href="/" style={{ color: "#6A3291" }}>
-          Back to home
-        </Link>
-      </p>
-
-      {bootstrapAvailable && (
-        <p style={{ marginTop: 8, fontSize: 13 }}>
-          <Link href="/admin/bootstrap" style={{ color: "#6A3291" }}>
-            First-time setup
-          </Link>
-        </p>
-      )}
-
-      <p style={{ marginTop: 8, fontSize: 13 }}>
-        <Link href="/admin/request-access" style={{ color: "#6A3291" }}>
-          Request admin access
-        </Link>
-      </p>
+        <div className="auth-link-list">
+          <Link href="/">Back to home</Link>
+          {bootstrapAvailable && <Link href="/admin/bootstrap">First-time setup</Link>}
+          <Link href="/admin/request-access">Request admin access</Link>
+        </div>
+      </section>
     </main>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 10px",
-  fontSize: 14,
-  borderRadius: 6,
-  border: "1px solid #d1d5db",
-  outline: "none",
-};

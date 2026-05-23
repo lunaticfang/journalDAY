@@ -4,71 +4,30 @@ import Link from "next/link";
 
 export default function LoginChooserPage() {
   return (
-    <main
-      style={{
-        maxWidth: 520,
-        margin: "80px auto",
-        padding: 24,
-        background: "#ffffff",
-        borderRadius: 8,
-        border: "1px solid #e5e7eb",
-        textAlign: "center",
-      }}
-    >
-      <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 10 }}>
-        Sign in to UpDAYtes
-      </h1>
+    <main className="auth-shell">
+      <section className="auth-card auth-card--wide">
+        <h1 className="auth-title">Sign in to UpDAYtes</h1>
 
-      <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 30 }}>
-        Choose how you want to continue
-      </p>
+        <p className="auth-subtitle">
+          Choose your workspace to continue.
+        </p>
 
-      <div style={{ display: "grid", gap: 14 }}>
-        {/* AUTHOR */}
-        <Link
-          href="/login/author"
-          style={{
-            display: "block",
-            padding: "14px 16px",
-            borderRadius: 6,
-            border: "1px solid #e5e7eb",
-            textDecoration: "none",
-            color: "#111827",
-            fontSize: 15,
-          }}
-        >
-          <strong>Continue as Author</strong>
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            Submit manuscripts and track submissions
-          </div>
-        </Link>
+        <div className="auth-choice-grid">
+          <Link href="/login/author" className="auth-choice auth-choice--default">
+            <strong>Continue as Author</strong>
+            <span>Submit manuscripts and track your submissions.</span>
+          </Link>
 
-        {/* ADMIN */}
-        <Link
-          href="/admin/login"
-          style={{
-            display: "block",
-            padding: "14px 16px",
-            borderRadius: 6,
-            border: "1px solid #6A3291",
-            textDecoration: "none",
-            color: "#6A3291",
-            fontSize: 15,
-            fontWeight: 600,
-          }}
-        >
-          Continue as Admin
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            Editorial & site management
-          </div>
-        </Link>
-      </div>
+          <Link href="/admin/login" className="auth-choice auth-choice--accent">
+            <strong>Continue as Admin</strong>
+            <span>Editorial review, issue management, and publishing controls.</span>
+          </Link>
+        </div>
 
-      <p style={{ marginTop: 24, fontSize: 13 }}>
-        <Link href="/" style={{ color: "#6A3291" }}>
-          ← Back to home
-        </Link>
-      </p>
+        <div className="auth-link-list">
+          <Link href="/">Back to home</Link>
+        </div>
+      </section>
     </main>
   );
 }
