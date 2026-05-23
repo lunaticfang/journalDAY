@@ -1785,11 +1785,15 @@ body {
   border: 1px solid rgba(17, 24, 39, 0.08);
   background: linear-gradient(180deg, #efe7f9 0%, #f9fafb 100%);
   box-shadow: 0 18px 34px rgba(17, 24, 39, 0.09);
+  display: flex;
+  flex-direction: column;
 }
 
 .publication-cover img {
   width: 100%;
   height: 100%;
+  min-height: 250px;
+  flex: 1;
   object-fit: cover;
   display: block;
 }
@@ -1804,6 +1808,35 @@ body {
   color: #6b7280;
   font-size: 14px;
   font-weight: 600;
+}
+
+.publication-cover__admin {
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 10px;
+}
+
+.publication-cover__admin span {
+  display: block;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.publication-cover__admin input[type="file"] {
+  max-width: 100%;
+  font-size: 12px;
+}
+
+.publication-cover__message {
+  color: #166534;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.publication-cover__message--error {
+  color: #991b1b;
 }
 
 .publication-hero__content,

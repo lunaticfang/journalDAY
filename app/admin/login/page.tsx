@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentClientAccess } from "../../../lib/clientPermissions";
+import PasswordField from "../../components/PasswordField";
 import {
   INVALID_CREDENTIALS_MESSAGE,
   RESET_REQUEST_MESSAGE,
@@ -227,17 +228,15 @@ export default function AdminLoginPage() {
           />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 13 }}>Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            style={inputStyle}
-          />
-        </div>
+        <PasswordField
+          label="Password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          inputStyle={inputStyle}
+          containerStyle={{ marginBottom: 16 }}
+        />
 
         <button
           type="submit"

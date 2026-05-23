@@ -1,10 +1,11 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireEditor } from "../../../../lib/adminAuth";
-import { getTransactionalEmailProvider } from "../../../../lib/transactionalEmail";
 import { respondWithApiError } from "../../../../lib/apiError";
 import { sendReviewerAssignmentEmail } from "../../../../lib/reviewerMail";
 import {
+  getReviewerWorkflowMigrationHint,
   isReviewerWorkflowMetadataMissingError,
+  isReviewerWorkflowMissingTableError,
   normalizeReviewDueAtInput,
 } from "../../../../lib/reviewerWorkflowShared";
 
@@ -12,6 +13,7 @@ const REVIEW_SELECT_FULL =
   "id, manuscript_id, reviewer_id, recommendation, created_at, invited_at, due_at, last_reminder_at, decided_at";
 const REVIEW_SELECT_LEGACY =
   "id, manuscript_id, reviewer_id, recommendation, created_at, decided_at";
+const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
 
 async function fetchExistingReview(manuscriptId, reviewerId) {
   let workflowMetadataReady = true;
@@ -165,6 +167,12 @@ export default async function handler(req, res) {
     } = await fetchExistingReview(manuscript_id, reviewerId);
 
     if (existingErr) {
+      if (isReviewerWorkflowMissingTableError(existingErr)) {
+        return res.status(409).json({
+          error: REVIEW_WORKFLOW_DOWN_MESSAGE,
+          reviewWorkflowMigrationRequired: true,
+        });
+      }
       throw existingErr;
     }
 
@@ -187,7 +195,15 @@ export default async function handler(req, res) {
       dueAt,
     });
 
-    if (reviewErr) throw reviewErr;
+    if (reviewErr) {
+      if (isReviewerWorkflowMissingTableError(reviewErr)) {
+        return res.status(409).json({
+          error: REVIEW_WORKFLOW_DOWN_MESSAGE,
+          reviewWorkflowMigrationRequired: true,
+        });
+      }
+      throw reviewErr;
+    }
 
     await supabaseServer
       .from("manuscripts")

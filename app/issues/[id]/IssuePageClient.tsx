@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentClientAccess } from "../../../lib/clientPermissions";
+import FileAttachment from "../../components/FileAttachment";
 
 type Issue = {
   id: string;
@@ -115,9 +116,16 @@ export default function IssuePage({
       ? rawId[0]
       : undefined;
 
-  const [issue, setIssue] = useState<Issue | null>(initialIssue);
-  const [articles, setArticles] = useState<Article[]>(initialArticles);
-  const [loading, setLoading] = useState(!initialIssue);
+  const initialIssueMatchesRoute =
+    Boolean(initialIssue?.id) && Boolean(id) && initialIssue?.id === id;
+
+  const [issue, setIssue] = useState<Issue | null>(
+    initialIssueMatchesRoute ? initialIssue : null
+  );
+  const [articles, setArticles] = useState<Article[]>(
+    initialIssueMatchesRoute ? initialArticles : []
+  );
+  const [loading, setLoading] = useState(!initialIssueMatchesRoute);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isEditor, setIsEditor] = useState(false);
@@ -126,6 +134,61 @@ export default function IssuePage({
   const [authorCoDraft, setAuthorCoDraft] = useState("");
   const [authorSaveError, setAuthorSaveError] = useState<string | null>(null);
   const [authorSaving, setAuthorSaving] = useState(false);
+  const [coverFeedback, setCoverFeedback] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
+
+  const handleIssueCoverChange = useCallback(
+    async (url: string | null) => {
+      if (!issue?.id) return;
+
+      const nextCoverUrl = url || null;
+      const previousCoverUrl = issue.cover_url ?? null;
+      setCoverFeedback(null);
+      setCoverError(null);
+
+      setIssue((current) =>
+        current ? { ...current, cover_url: nextCoverUrl } : current
+      );
+
+      if (nextCoverUrl === previousCoverUrl) {
+        return;
+      }
+
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+
+        if (!token) {
+          throw new Error("Please sign in again to update this issue cover.");
+        }
+
+        const resp = await fetch(`/api/issues/${issue.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ cover_url: nextCoverUrl }),
+        });
+
+        const json = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(json?.error || "Could not update this issue cover.");
+        }
+
+        setCoverFeedback("Cover updated for this publication.");
+      } catch (err) {
+        console.error("Issue cover update error:", err);
+        setIssue((current) =>
+          current ? { ...current, cover_url: previousCoverUrl } : current
+        );
+        setCoverError(
+          err instanceof Error ? err.message : "Could not update this issue cover."
+        );
+      }
+    },
+    [issue?.cover_url, issue?.id]
+  );
 
   async function handleViewPdf(manuscriptId: string) {
     try {
@@ -229,33 +292,41 @@ export default function IssuePage({
   }, []);
 
   useEffect(() => {
+    if (!id) {
+      setIssue(null);
+      setArticles([]);
+      setLoading(false);
+      setErrorMsg("Invalid issue id.");
+      return;
+    }
+
+    // Keep route data pinned to this issue id so previous covers never bleed through.
+    if (initialIssue?.id === id) {
+      setIssue(initialIssue);
+      setArticles(initialArticles || []);
+    } else {
+      setIssue(null);
+      setArticles([]);
+    }
+    setErrorMsg(null);
+
     let cancelled = false;
 
     (async () => {
-      if (!initialIssue) {
-        setLoading(true);
-      }
-      setErrorMsg(null);
-
-      if (!id) {
-        setErrorMsg("Invalid issue id.");
-        setLoading(false);
-        return;
-      }
+      setLoading(true);
 
       try {
-        if (!initialIssue) {
-          const resp = await fetch(`/api/issues/${id}`);
-          const json = await resp.json().catch(() => ({}));
+        const resp = await fetch(`/api/issues/${id}`, { cache: "no-store" });
+        const json = await resp.json().catch(() => ({}));
 
-          if (!resp.ok) {
-            throw new Error(json?.error || "Failed to load publication.");
-          }
+        if (!resp.ok) {
+          throw new Error(json?.error || "Failed to load publication.");
+        }
 
-          if (!cancelled) {
-            setIssue((json?.issue || null) as Issue | null);
-            setArticles((json?.articles || []) as Article[]);
-          }
+        if (!cancelled) {
+          const nextIssue = (json?.issue || null) as Issue | null;
+          setIssue(nextIssue);
+          setArticles((json?.articles || []) as Article[]);
         }
       } catch (err) {
         console.error("IssuePage load error:", err);
@@ -276,7 +347,7 @@ export default function IssuePage({
     return () => {
       cancelled = true;
     };
-  }, [id, initialIssue]);
+  }, [id, initialIssue, initialArticles]);
 
   const pubDate = issue?.published_at
     ? new Date(issue.published_at).toLocaleDateString("en-US", {
@@ -332,10 +403,36 @@ export default function IssuePage({
             ) : (
               <div className="publication-cover__fallback">No Cover</div>
             )}
+            {isEditor && (
+              <div className="publication-cover__admin">
+                <span>Issue cover</span>
+                <FileAttachment
+                  contentKey={`issue.${issue.id}.cover`}
+                  isEditor={isEditor}
+                  bucketName="cms-media"
+                  accept="image/*"
+                  hidePreview
+                  onFileChange={(url) => {
+                    void handleIssueCoverChange(url);
+                  }}
+                  containerStyle={{ marginTop: 0 }}
+                />
+                {coverFeedback && (
+                  <p className="publication-cover__message">
+                    {coverFeedback}
+                  </p>
+                )}
+                {coverError && (
+                  <p className="publication-cover__message publication-cover__message--error">
+                    {coverError}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="publication-hero__content">
-            <div className="publication-eyebrow">Current Publication</div>
+            <div className="publication-eyebrow">Publication</div>
             <h1>{issue.title || "Untitled issue"}</h1>
 
             <div className="publication-meta">

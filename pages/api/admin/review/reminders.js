@@ -4,15 +4,18 @@ import { respondWithApiError } from "../../../../lib/apiError";
 import { getTransactionalEmailProvider } from "../../../../lib/transactionalEmail";
 import { sendReviewerReminderEmail } from "../../../../lib/reviewerMail";
 import {
+  getReviewerWorkflowMigrationHint,
   REVIEW_REMINDER_COOLDOWN_HOURS,
   REVIEW_REMINDER_LEAD_DAYS,
   isPendingReview,
   isReviewerWorkflowMetadataMissingError,
+  isReviewerWorkflowMissingTableError,
 } from "../../../../lib/reviewerWorkflowShared";
 
 const CRON_SECRET = process.env.CRON_SECRET || process.env.KEEPALIVE_SECRET || "";
 const REVIEW_SELECT =
   "id, manuscript_id, reviewer_id, recommendation, created_at, invited_at, due_at, last_reminder_at, decided_at";
+const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
 
 function hasValidCronSecret(req) {
   if (!CRON_SECRET) return false;
@@ -50,6 +53,13 @@ export default async function handler(req, res) {
       .order("due_at", { ascending: true });
 
     if (reviewErr) {
+      if (isReviewerWorkflowMissingTableError(reviewErr)) {
+        return res.status(409).json({
+          error: REVIEW_WORKFLOW_DOWN_MESSAGE,
+          migrationRequired: true,
+        });
+      }
+
       if (isReviewerWorkflowMetadataMissingError(reviewErr)) {
         return res.status(409).json({
           error:

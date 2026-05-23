@@ -4,6 +4,25 @@ import { requireRole } from "../../../../lib/adminAuth";
 import { normalizeAdminAccessRequestRow } from "../../../../lib/adminAccessRequests";
 import { respondWithApiError } from "../../../../lib/apiError";
 
+const REQUEST_SCHEMA_HINT =
+  "Admin access requests are not configured yet. Run db/admin_request_schema_repair.sql in Supabase SQL editor.";
+
+function getErrorMessage(err: unknown) {
+  return String((err as any)?.message || err || "").toLowerCase();
+}
+
+function isMissingRequestSchemaError(err: unknown) {
+  const message = getErrorMessage(err);
+  return (
+    message.includes("admin_access_requests") &&
+    (message.includes("does not exist") ||
+      message.includes("schema cache") ||
+      message.includes("column") ||
+      message.includes("relation") ||
+      message.includes("table"))
+  );
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -22,6 +41,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .order("created_at", { ascending: false });
 
     if (requestError) {
+      if (isMissingRequestSchemaError(requestError)) {
+        return res.status(409).json({
+          error: REQUEST_SCHEMA_HINT,
+          migrationRequired: true,
+        });
+      }
+
       throw requestError;
     }
 

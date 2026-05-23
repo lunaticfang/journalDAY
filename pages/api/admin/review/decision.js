@@ -6,6 +6,11 @@ import {
   sendEditorReviewSubmittedEmail,
 } from "../../../../lib/reviewerMail";
 import { respondWithApiError } from "../../../../lib/apiError";
+import {
+  getReviewerWorkflowMigrationHint,
+  isReviewerWorkflowMissingColumnError,
+  isReviewerWorkflowMissingTableError,
+} from "../../../../lib/reviewerWorkflowShared";
 
 const RECOMMENDATIONS = [
   "accept",
@@ -13,6 +18,7 @@ const RECOMMENDATIONS = [
   "major_revisions",
   "reject",
 ];
+const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
 
 function parseAuthors(raw) {
   if (!raw) return [];
@@ -54,11 +60,18 @@ export default async function handler(req, res) {
       .eq("reviewer_id", auth.user.id)
       .maybeSingle();
 
+    if (reviewErr && isReviewerWorkflowMissingTableError(reviewErr)) {
+      return res.status(409).json({
+        error: REVIEW_WORKFLOW_DOWN_MESSAGE,
+        reviewWorkflowMigrationRequired: true,
+      });
+    }
+
     if (reviewErr || !review) {
       return res.status(403).json({ error: "Not assigned to this manuscript" });
     }
 
-    const { data: updated, error: updateErr } = await supabaseServer
+    let updateResult = await supabaseServer
       .from("manuscript_reviews")
       .update({
         recommendation,
@@ -68,6 +81,30 @@ export default async function handler(req, res) {
       .eq("id", review.id)
       .select()
       .single();
+
+    if (
+      updateResult.error &&
+      isReviewerWorkflowMissingColumnError(updateResult.error, ["notes"])
+    ) {
+      updateResult = await supabaseServer
+        .from("manuscript_reviews")
+        .update({
+          recommendation,
+          decided_at: new Date().toISOString(),
+        })
+        .eq("id", review.id)
+        .select()
+        .single();
+    }
+
+    const { data: updated, error: updateErr } = updateResult;
+
+    if (updateErr && isReviewerWorkflowMissingTableError(updateErr)) {
+      return res.status(409).json({
+        error: REVIEW_WORKFLOW_DOWN_MESSAGE,
+        reviewWorkflowMigrationRequired: true,
+      });
+    }
 
     if (updateErr) throw updateErr;
 

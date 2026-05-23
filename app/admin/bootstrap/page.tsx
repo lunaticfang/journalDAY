@@ -9,6 +9,7 @@ import {
   normalizeEmail,
   validatePasswordStrength,
 } from "../../../lib/authSecurity";
+import PasswordField from "../../components/PasswordField";
 
 type BootstrapStatus = {
   enabled: boolean;
@@ -276,16 +277,14 @@ export default function AdminBootstrapPage() {
 
       {status?.enabled && (
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 13 }}>Bootstrap Secret</label>
-            <input
-              type="password"
-              required
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
+          <PasswordField
+            label="Bootstrap Secret"
+            required
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            inputStyle={inputStyle}
+            containerStyle={{ marginBottom: 12 }}
+          />
 
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 13 }}>Email</label>
@@ -300,29 +299,25 @@ export default function AdminBootstrapPage() {
             />
           </div>
 
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 13 }}>Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-              style={inputStyle}
-            />
-          </div>
+          <PasswordField
+            label="Password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            inputStyle={inputStyle}
+            containerStyle={{ marginBottom: 12 }}
+          />
 
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13 }}>Confirm Password</label>
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              autoComplete="new-password"
-              style={inputStyle}
-            />
-          </div>
+          <PasswordField
+            label="Confirm Password"
+            required
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            inputStyle={inputStyle}
+            containerStyle={{ marginBottom: 16 }}
+          />
 
           <button
             type="submit"

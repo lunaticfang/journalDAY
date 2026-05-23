@@ -1,12 +1,17 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireRole } from "../../../../lib/adminAuth";
 import { respondWithApiError } from "../../../../lib/apiError";
-import { isReviewerWorkflowMetadataMissingError } from "../../../../lib/reviewerWorkflowShared";
+import {
+  getReviewerWorkflowMigrationHint,
+  isReviewerWorkflowMetadataMissingError,
+  isReviewerWorkflowMissingTableError,
+} from "../../../../lib/reviewerWorkflowShared";
 
 const REVIEW_SELECT_FULL =
   "id, manuscript_id, reviewer_id, recommendation, notes, created_at, invited_at, due_at, last_reminder_at, decided_at";
 const REVIEW_SELECT_LEGACY =
   "id, manuscript_id, reviewer_id, recommendation, notes, created_at, decided_at";
+const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
 
 function parseAuthors(raw) {
   if (!raw) return [];
@@ -56,16 +61,32 @@ export default async function handler(req, res) {
         .eq("reviewer_id", auth.user.id)
         .maybeSingle();
 
+      if (aErr && isReviewerWorkflowMissingTableError(aErr)) {
+        return res.status(409).json({
+          error: REVIEW_WORKFLOW_DOWN_MESSAGE,
+          reviewWorkflowMigrationRequired: true,
+        });
+      }
+
       if (aErr || !assignment) {
         return res.status(403).json({ error: "Not assigned to this manuscript" });
       }
     }
 
     let reviewWorkflowMetadataReady = true;
+    let reviewWorkflowAvailable = true;
+    let reviewWorkflowMessage = "";
+    let reviews = [];
     let reviewQuery = await supabaseServer
       .from("manuscript_reviews")
       .select(REVIEW_SELECT_FULL)
       .eq("manuscript_id", id);
+
+    if (reviewQuery.error && isReviewerWorkflowMissingTableError(reviewQuery.error)) {
+      reviewWorkflowAvailable = false;
+      reviewWorkflowMetadataReady = false;
+      reviewWorkflowMessage = REVIEW_WORKFLOW_DOWN_MESSAGE;
+    }
 
     if (
       reviewQuery.error &&
@@ -78,13 +99,21 @@ export default async function handler(req, res) {
         .eq("manuscript_id", id);
     }
 
-    const { data: reviews, error: reviewErr } = reviewQuery;
+    const { data: reviewRows, error: reviewErr } = reviewQuery;
 
     if (reviewErr) {
-      throw reviewErr;
+      if (isReviewerWorkflowMissingTableError(reviewErr)) {
+        reviewWorkflowAvailable = false;
+        reviewWorkflowMetadataReady = false;
+        reviewWorkflowMessage = REVIEW_WORKFLOW_DOWN_MESSAGE;
+      } else {
+        throw reviewErr;
+      }
+    } else {
+      reviews = reviewRows || [];
     }
 
-    const reviewerIds = (reviews || [])
+    const reviewerIds = reviews
       .map((r) => r.reviewer_id)
       .filter(Boolean);
 
@@ -104,10 +133,14 @@ export default async function handler(req, res) {
       ok: true,
       manuscript,
       authors,
-      reviews: reviews || [],
+      reviews,
       reviewers: reviewerProfiles,
       role: auth.profile.role,
+      reviewWorkflowAvailable,
       reviewWorkflowMetadataReady,
+      reviewWorkflowMigrationRequired:
+        !reviewWorkflowAvailable || !reviewWorkflowMetadataReady,
+      reviewWorkflowMessage,
     });
   } catch (err) {
     return respondWithApiError(

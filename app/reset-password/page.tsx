@@ -8,6 +8,7 @@ import {
   PASSWORD_POLICY_HINT,
   validatePasswordStrength,
 } from "../../lib/authSecurity";
+import PasswordField from "../components/PasswordField";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -189,21 +190,19 @@ export default function ResetPasswordPage() {
         <p style={{ margin: 0, color: "#6b7280" }}>Checking your recovery link...</p>
       ) : hasRecoveryAccess ? (
         <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-          <input
-            type="password"
+          <PasswordField
             placeholder="New password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="new-password"
-            style={inputStyle}
+            inputStyle={inputStyle}
           />
-          <input
-            type="password"
+          <PasswordField
             placeholder="Confirm new password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             autoComplete="new-password"
-            style={inputStyle}
+            inputStyle={inputStyle}
           />
           <button
             type="submit"

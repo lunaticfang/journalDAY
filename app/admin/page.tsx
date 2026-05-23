@@ -44,6 +44,15 @@ type Notification = {
   created_at: string | null;
 };
 
+type AdminAccessRequest = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  message: string | null;
+  status: "pending" | "invited" | "approved" | "rejected";
+  created_at: string | null;
+};
+
 const STATUS_COLUMNS = [
   {
     key: "submitted",
@@ -152,7 +161,11 @@ export default function AdminPage() {
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
   const [reviewWorkflowMetadataReady, setReviewWorkflowMetadataReady] =
     useState(true);
+  const [reviewWorkflowAvailable, setReviewWorkflowAvailable] = useState(true);
+  const [reviewWorkflowMessage, setReviewWorkflowMessage] = useState("");
   const [reminding, setReminding] = useState(false);
+  const [adminRequests, setAdminRequests] = useState<AdminAccessRequest[]>([]);
+  const [adminRequestsError, setAdminRequestsError] = useState("");
 
   const availableFilters = useMemo(() => {
     if (role === "reviewer") {
@@ -209,7 +222,9 @@ export default function AdminPage() {
       setAssignments(json.assignments || {});
       setReviewers(json.reviewers || []);
       setRole(json.role || null);
+      setReviewWorkflowAvailable(json.reviewWorkflowAvailable !== false);
       setReviewWorkflowMetadataReady(json.reviewWorkflowMetadataReady !== false);
+      setReviewWorkflowMessage(String(json.reviewWorkflowMessage || ""));
     } catch (err: unknown) {
       console.error(err);
       const message = err instanceof Error ? err.message : String(err);
@@ -234,13 +249,52 @@ export default function AdminPage() {
     }
   }
 
+  async function loadAdminRequests(activeToken: string | null) {
+    if (!activeToken) return;
+
+    try {
+      setAdminRequestsError("");
+      const resp = await fetch("/api/admin/requests/list", {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+      const json = await resp.json().catch(() => ({}));
+
+      if (resp.status === 401 || resp.status === 403) {
+        setAdminRequests([]);
+        return;
+      }
+
+      if (!resp.ok) {
+        throw new Error(json?.error || "Failed to load admin access requests.");
+      }
+
+      setAdminRequests(json.requests || []);
+    } catch (err) {
+      console.warn("admin request load failed:", err);
+      setAdminRequestsError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load admin access requests."
+      );
+    }
+  }
+
   useEffect(() => {
     if (checking) return;
     loadQueue(token);
     loadNotifications(token);
+    loadAdminRequests(token);
   }, [checking, token]);
 
   async function handleAssign(manuscriptId: string) {
+    if (!reviewWorkflowAvailable) {
+      setError(
+        reviewWorkflowMessage ||
+          "Reviewer workflow is not configured yet. Please run the reviewer SQL migration first."
+      );
+      return;
+    }
+
     const email = assignInputs[manuscriptId] || "";
     const dueDate = assignDueInputs[manuscriptId] || "";
     if (!email.trim()) {
@@ -281,6 +335,7 @@ export default function AdminPage() {
       );
       setAssigningId(null);
       await loadQueue(token);
+      await loadAdminRequests(token);
     } catch (err: unknown) {
       console.error(err);
       const message = err instanceof Error ? err.message : String(err);
@@ -318,6 +373,14 @@ export default function AdminPage() {
   }
 
   async function handleSendReminders() {
+    if (!reviewWorkflowAvailable) {
+      setError(
+        reviewWorkflowMessage ||
+          "Reviewer workflow is not configured yet. Please run the reviewer SQL migration first."
+      );
+      return;
+    }
+
     try {
       setError("");
       setNotice("");
@@ -487,6 +550,15 @@ export default function AdminPage() {
     }, 0);
   }, [assignments, filteredQueue]);
 
+  const actionNeededAdminRequests = useMemo(
+    () =>
+      adminRequests.filter(
+        (request) =>
+          request.status === "pending" || request.status === "invited"
+      ),
+    [adminRequests]
+  );
+
   if (checking) {
     return (
       <main className="admin-page">
@@ -537,7 +609,13 @@ export default function AdminPage() {
 
         {error && <div className="admin-alert admin-alert--error">{error}</div>}
         {notice && <div className="admin-alert admin-alert--success">{notice}</div>}
-        {!reviewWorkflowMetadataReady && (
+        {!reviewWorkflowAvailable && (
+          <div className="admin-alert admin-alert--error">
+            {reviewWorkflowMessage ||
+              "Reviewer workflow is not configured yet. Run the reviewer workflow SQL migrations in Supabase before assigning reviewers."}
+          </div>
+        )}
+        {reviewWorkflowAvailable && !reviewWorkflowMetadataReady && (
           <div className="admin-alert">
             Reviewer due dates are running in compatibility mode. Run
             `db/reviewer_mail_phase1.sql` in Supabase to store deadlines and
@@ -760,6 +838,7 @@ export default function AdminPage() {
                                     type="button"
                                     onClick={() => handleAssign(m.id)}
                                     disabled={
+                                      !reviewWorkflowAvailable ||
                                       assigningId === m.id ||
                                       !(assignInputs[m.id] || "").trim()
                                     }
@@ -807,13 +886,23 @@ export default function AdminPage() {
                   <strong>Notifications</strong>
                   <span>{notifications.length} recent updates</span>
                 </li>
+                {(role === "owner" || role === "admin") && (
+                  <li>
+                    <strong>Admin requests</strong>
+                    <span>{actionNeededAdminRequests.length} need action</span>
+                  </li>
+                )}
               </ul>
               <div className="admin-actions">
                 {role !== "reviewer" && (
                   <button
                     type="button"
                     className="admin-btn admin-btn--ghost"
-                    disabled={reminding || !reviewWorkflowMetadataReady}
+                    disabled={
+                      reminding ||
+                      !reviewWorkflowAvailable ||
+                      !reviewWorkflowMetadataReady
+                    }
                     onClick={handleSendReminders}
                   >
                     {reminding ? "Sending reminders..." : "Send due reminders"}
@@ -837,14 +926,38 @@ export default function AdminPage() {
               </div>
             </div>
 
+            {(role === "owner" || role === "admin") && (
+              <div className="admin-panel">
+                <h3>Admin access requests</h3>
+                {adminRequestsError && (
+                  <p className="admin-muted">{adminRequestsError}</p>
+                )}
+                {!adminRequestsError && actionNeededAdminRequests.length === 0 && (
+                  <p className="admin-muted">No requests need attention right now.</p>
+                )}
+                {actionNeededAdminRequests.length > 0 && (
+                  <ul className="admin-notes">
+                    {actionNeededAdminRequests.slice(0, 4).map((request) => (
+                      <li key={request.id}>
+                        <strong>{request.name || "Admin request"}</strong>
+                        <p>{request.email || "No email listed"}</p>
+                        <span className="admin-chip">
+                          {request.status.replace("_", " ")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="admin-actions">
+                  <Link href="/admin/users" className="admin-btn admin-btn--primary">
+                    Review requests
+                  </Link>
+                </div>
+              </div>
+            )}
+
             <div className="admin-panel">
               <h3>Recent notifications</h3>
-              {!reviewWorkflowMetadataReady && (
-                <p className="admin-muted">
-                  Reviewer reminder history appears after the reviewer mail SQL
-                  migration is applied.
-                </p>
-              )}
               {notifications.length === 0 && (
                 <p className="admin-muted">No updates yet.</p>
               )}

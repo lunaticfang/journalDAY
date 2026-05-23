@@ -87,6 +87,8 @@ export default function AdminSubmissionDetail() {
   const [reviewNotes, setReviewNotes] = useState("");
   const [reviewWorkflowMetadataReady, setReviewWorkflowMetadataReady] =
     useState(true);
+  const [reviewWorkflowAvailable, setReviewWorkflowAvailable] = useState(true);
+  const [reviewWorkflowMessage, setReviewWorkflowMessage] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -121,7 +123,9 @@ export default function AdminSubmissionDetail() {
         setReviews(json.reviews || []);
         setReviewerProfiles(json.reviewers || []);
         setRole(json.role || null);
+        setReviewWorkflowAvailable(json.reviewWorkflowAvailable !== false);
         setReviewWorkflowMetadataReady(json.reviewWorkflowMetadataReady !== false);
+        setReviewWorkflowMessage(String(json.reviewWorkflowMessage || ""));
       } catch (err: any) {
         console.error(err);
         setError(err.message || String(err));
@@ -186,6 +190,14 @@ export default function AdminSubmissionDetail() {
   }
 
   async function assignReviewer() {
+    if (!reviewWorkflowAvailable) {
+      setError(
+        reviewWorkflowMessage ||
+          "Reviewer workflow is not configured yet. Please run the reviewer SQL migration first."
+      );
+      return;
+    }
+
     if (!assignEmail) {
       setError("Provide a reviewer email.");
       return;
@@ -238,7 +250,9 @@ export default function AdminSubmissionDetail() {
     setAuthors(json.authors || []);
     setReviews(json.reviews || []);
     setReviewerProfiles(json.reviewers || []);
+    setReviewWorkflowAvailable(json.reviewWorkflowAvailable !== false);
     setReviewWorkflowMetadataReady(json.reviewWorkflowMetadataReady !== false);
+    setReviewWorkflowMessage(String(json.reviewWorkflowMessage || ""));
   }
 
   async function updateStatus(status: string) {
@@ -266,6 +280,14 @@ export default function AdminSubmissionDetail() {
   }
 
   async function submitReview() {
+    if (!reviewWorkflowAvailable) {
+      setError(
+        reviewWorkflowMessage ||
+          "Reviewer workflow is not configured yet. Please run the reviewer SQL migration first."
+      );
+      return;
+    }
+
     try {
       setDecisionLoading(true);
       setError("");
@@ -308,6 +330,9 @@ export default function AdminSubmissionDetail() {
     return (
       <main className="admin-page">
         <div className="admin-shell">
+          {error ? (
+            <div className="admin-alert admin-alert--error">{error}</div>
+          ) : null}
           <p className="admin-muted">Submission not found.</p>
         </div>
       </main>
@@ -344,7 +369,13 @@ export default function AdminSubmissionDetail() {
 
         {error && <div className="admin-alert admin-alert--error">{error}</div>}
         {notice && <div className="admin-alert admin-alert--success">{notice}</div>}
-        {!reviewWorkflowMetadataReady && (
+        {!reviewWorkflowAvailable && (
+          <div className="admin-alert admin-alert--error">
+            {reviewWorkflowMessage ||
+              "Reviewer workflow is not configured yet. Run the reviewer workflow SQL migrations in Supabase before assigning reviewers."}
+          </div>
+        )}
+        {reviewWorkflowAvailable && !reviewWorkflowMetadataReady && (
           <div className="admin-alert">
             Reviewer deadlines are running in compatibility mode. Run
             `db/reviewer_mail_phase1.sql` in Supabase to store due dates and
@@ -461,7 +492,7 @@ export default function AdminSubmissionDetail() {
                 <button
                   className="admin-btn admin-btn--primary"
                   type="button"
-                  disabled={assigning}
+                  disabled={assigning || !reviewWorkflowAvailable}
                   onClick={assignReviewer}
                 >
                   {assigning ? "Assigning..." : "Assign reviewer"}
@@ -536,7 +567,7 @@ export default function AdminSubmissionDetail() {
                 <button
                   className="admin-btn admin-btn--primary"
                   type="button"
-                  disabled={decisionLoading}
+                  disabled={decisionLoading || !reviewWorkflowAvailable}
                   onClick={submitReview}
                 >
                   Submit review

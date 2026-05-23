@@ -2,8 +2,13 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { isApprovedProfileRole, isOwnerProfile } from "../../../../lib/accessControl";
 import { respondWithApiError } from "../../../../lib/apiError";
+import {
+  getReviewerWorkflowMigrationHint,
+  isReviewerWorkflowMissingTableError,
+} from "../../../../lib/reviewerWorkflowShared";
 
 const BUCKET = process.env.SUPABASE_BUCKET_MANUSCRIPTS || "manuscripts";
+const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
 
 function normalizeId(raw) {
   return typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : null;
@@ -48,7 +53,15 @@ async function reviewerHasAssignment(manuscriptId, reviewerId) {
     .eq("reviewer_id", reviewerId)
     .maybeSingle();
 
-  if (error) return false;
+  if (error) {
+    if (isReviewerWorkflowMissingTableError(error)) {
+      const missingWorkflowErr = new Error(REVIEW_WORKFLOW_DOWN_MESSAGE);
+      missingWorkflowErr.name = "ReviewerWorkflowMissing";
+      throw missingWorkflowErr;
+    }
+
+    return false;
+  }
   return !!data;
 }
 
@@ -101,7 +114,19 @@ export default async function handler(req, res) {
       }
 
       if (isReviewer) {
-        const ok = await reviewerHasAssignment(m.id, user.id);
+        let ok = false;
+        try {
+          ok = await reviewerHasAssignment(m.id, user.id);
+        } catch (assignmentErr) {
+          if (assignmentErr?.name === "ReviewerWorkflowMissing") {
+            return res.status(409).json({
+              error: assignmentErr.message,
+              reviewWorkflowMigrationRequired: true,
+            });
+          }
+          throw assignmentErr;
+        }
+
         if (!ok) {
           return res.status(403).json({ error: "Not assigned to this manuscript" });
         }
@@ -206,7 +231,19 @@ export default async function handler(req, res) {
         }
       } else if (!owner && !isStaff) {
         if (isReviewer) {
-          const ok = await reviewerHasAssignment(manuscript.id, user.id);
+          let ok = false;
+          try {
+            ok = await reviewerHasAssignment(manuscript.id, user.id);
+          } catch (assignmentErr) {
+            if (assignmentErr?.name === "ReviewerWorkflowMissing") {
+              return res.status(409).json({
+                error: assignmentErr.message,
+                reviewWorkflowMigrationRequired: true,
+              });
+            }
+            throw assignmentErr;
+          }
+
           if (!ok) {
             return res
               .status(403)

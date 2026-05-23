@@ -1,7 +1,11 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireRole } from "../../../lib/adminAuth";
 import { respondWithApiError } from "../../../lib/apiError";
-import { isReviewerWorkflowMetadataMissingError } from "../../../lib/reviewerWorkflowShared";
+import {
+  getReviewerWorkflowMigrationHint,
+  isReviewerWorkflowMetadataMissingError,
+  isReviewerWorkflowMissingTableError,
+} from "../../../lib/reviewerWorkflowShared";
 
 const STATUS_ORDER = [
   "submitted",
@@ -16,6 +20,7 @@ const REVIEW_SELECT_FULL =
   "id, manuscript_id, reviewer_id, recommendation, created_at, invited_at, due_at, last_reminder_at, decided_at";
 const REVIEW_SELECT_LEGACY =
   "id, manuscript_id, reviewer_id, recommendation, created_at, decided_at";
+const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -27,6 +32,9 @@ export default async function handler(req, res) {
     if (!auth) return;
 
     const role = auth.profile.role;
+    let reviewWorkflowMetadataReady = true;
+    let reviewWorkflowAvailable = true;
+    let reviewWorkflowMessage = "";
 
     let manuscriptIds = null;
     if (role === "reviewer") {
@@ -35,10 +43,20 @@ export default async function handler(req, res) {
         .select("manuscript_id")
         .eq("reviewer_id", auth.user.id);
 
-      if (aErr) throw aErr;
-      manuscriptIds = (assignments || [])
-        .map((a) => a.manuscript_id)
-        .filter(Boolean);
+      if (aErr) {
+        if (isReviewerWorkflowMissingTableError(aErr)) {
+          reviewWorkflowAvailable = false;
+          reviewWorkflowMetadataReady = false;
+          reviewWorkflowMessage = REVIEW_WORKFLOW_DOWN_MESSAGE;
+          manuscriptIds = [];
+        } else {
+          throw aErr;
+        }
+      } else {
+        manuscriptIds = (assignments || [])
+          .map((a) => a.manuscript_id)
+          .filter(Boolean);
+      }
 
       if (!manuscriptIds.length) {
         const emptyQueue = {};
@@ -51,7 +69,11 @@ export default async function handler(req, res) {
           queue: emptyQueue,
           assignments: {},
           reviewers: [],
-          reviewWorkflowMetadataReady: true,
+          reviewWorkflowAvailable,
+          reviewWorkflowMetadataReady,
+          reviewWorkflowMigrationRequired:
+            !reviewWorkflowAvailable || !reviewWorkflowMetadataReady,
+          reviewWorkflowMessage,
         });
       }
     }
@@ -73,13 +95,19 @@ export default async function handler(req, res) {
     const ids = (manuscripts || []).map((m) => m.id).filter(Boolean);
     let assignments = {};
     let reviewers = [];
-    let reviewWorkflowMetadataReady = true;
+    let reviewRows = [];
 
-    if (ids.length > 0) {
+    if (ids.length > 0 && reviewWorkflowAvailable) {
       let reviewQuery = await supabaseServer
         .from("manuscript_reviews")
         .select(REVIEW_SELECT_FULL)
         .in("manuscript_id", ids);
+
+      if (reviewQuery.error && isReviewerWorkflowMissingTableError(reviewQuery.error)) {
+        reviewWorkflowAvailable = false;
+        reviewWorkflowMetadataReady = false;
+        reviewWorkflowMessage = REVIEW_WORKFLOW_DOWN_MESSAGE;
+      }
 
       if (
         reviewQuery.error &&
@@ -94,10 +122,20 @@ export default async function handler(req, res) {
 
       const { data: reviews, error: rErr } = reviewQuery;
 
-      if (rErr) throw rErr;
+      if (rErr) {
+        if (isReviewerWorkflowMissingTableError(rErr)) {
+          reviewWorkflowAvailable = false;
+          reviewWorkflowMetadataReady = false;
+          reviewWorkflowMessage = REVIEW_WORKFLOW_DOWN_MESSAGE;
+        } else {
+          throw rErr;
+        }
+      } else {
+        reviewRows = reviews || [];
+      }
 
       const reviewerIds = new Set();
-      (reviews || []).forEach((r) => {
+      reviewRows.forEach((r) => {
         reviewerIds.add(r.reviewer_id);
         if (!assignments[r.manuscript_id]) {
           assignments[r.manuscript_id] = [];
@@ -136,7 +174,11 @@ export default async function handler(req, res) {
       queue,
       assignments,
       reviewers,
+      reviewWorkflowAvailable,
       reviewWorkflowMetadataReady,
+      reviewWorkflowMigrationRequired:
+        !reviewWorkflowAvailable || !reviewWorkflowMetadataReady,
+      reviewWorkflowMessage,
     });
   } catch (err) {
     return respondWithApiError(

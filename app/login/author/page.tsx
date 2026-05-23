@@ -11,6 +11,7 @@ import {
   normalizeEmail,
   validatePasswordStrength,
 } from "../../../lib/authSecurity";
+import PasswordField from "../../components/PasswordField";
 
 type AuthMode = "signin" | "signup";
 
@@ -304,13 +305,12 @@ export default function LoginPage() {
             spellCheck={false}
             style={inputStyle}
           />
-          <input
-            type="password"
+          <PasswordField
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
-            style={inputStyle}
+            inputStyle={inputStyle}
           />
           <button
             type="submit"
@@ -375,21 +375,19 @@ export default function LoginPage() {
               spellCheck={false}
               style={inputStyle}
             />
-            <input
-              type="password"
+            <PasswordField
               placeholder="Create password"
               value={signupPassword}
               onChange={(e) => setSignupPassword(e.target.value)}
               autoComplete="new-password"
-              style={inputStyle}
+              inputStyle={inputStyle}
             />
-            <input
-              type="password"
+            <PasswordField
               placeholder="Confirm password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
-              style={inputStyle}
+              inputStyle={inputStyle}
             />
             <button
               type="submit"
