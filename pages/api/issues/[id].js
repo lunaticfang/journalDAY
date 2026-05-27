@@ -1,6 +1,7 @@
 // pages/api/issues/[id].js
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireRole } from "../../../lib/adminAuth";
+import { respondWithApiError } from "../../../lib/apiError";
 
 export default async function handler(req, res) {
   try {
@@ -77,7 +78,12 @@ export default async function handler(req, res) {
       articles: articles || [],
     });
   } catch (err) {
-    console.error("issue API error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "issue-detail",
+      err,
+      "Failed to load issue data."
+    );
   }
 }

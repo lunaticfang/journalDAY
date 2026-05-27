@@ -1,7 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireRole } from "../../../../lib/adminAuth";
-import { isOwnerProfile } from "../../../../lib/accessControl";
+import {
+  getConfiguredOwnerEmail,
+  isOwnerProfile,
+  normalizeEmail,
+} from "../../../../lib/accessControl";
 import { respondWithApiError } from "../../../../lib/apiError";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -42,6 +46,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (isOwnerProfile(target)) {
+    return res.status(400).json({ error: "Owner access cannot be revoked" });
+  }
+
+  const configuredOwnerEmail = normalizeEmail(getConfiguredOwnerEmail());
+  if (
+    configuredOwnerEmail &&
+    normalizeEmail(target.email) === configuredOwnerEmail
+  ) {
     return res.status(400).json({ error: "Owner access cannot be revoked" });
   }
 

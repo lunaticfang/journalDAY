@@ -3948,6 +3948,7 @@ body {
 
 .auth-input {
   width: 100%;
+  box-sizing: border-box;
   padding: 11px 12px;
   font-size: 14px;
   border-radius: 10px;
@@ -4107,6 +4108,8 @@ body {
 .password-field {
   display: grid;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
 }
 
 .password-field__label {
@@ -4118,10 +4121,14 @@ body {
 
 .password-field__inputWrap {
   position: relative;
+  width: 100%;
+  min-width: 0;
 }
 
 .password-field__input {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 11px 48px 11px 12px;
   font-size: 14px;
   border-radius: 10px;

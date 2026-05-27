@@ -134,8 +134,13 @@ export default async function handler(req, res) {
         reviewRows = reviews || [];
       }
 
+      const visibleReviewRows =
+        role === "reviewer"
+          ? reviewRows.filter((row) => row.reviewer_id === auth.user.id)
+          : reviewRows;
+
       const reviewerIds = new Set();
-      reviewRows.forEach((r) => {
+      visibleReviewRows.forEach((r) => {
         reviewerIds.add(r.reviewer_id);
         if (!assignments[r.manuscript_id]) {
           assignments[r.manuscript_id] = [];

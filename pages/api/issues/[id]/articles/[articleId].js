@@ -1,5 +1,6 @@
 import { supabaseServer } from "../../../../../lib/supabaseServer";
 import { requireEditor } from "../../../../../lib/adminAuth";
+import { respondWithApiError } from "../../../../../lib/apiError";
 
 function resolveParam(raw) {
   if (typeof raw === "string") return raw;
@@ -104,7 +105,12 @@ export default async function handler(req, res) {
       article,
     });
   } catch (err) {
-    console.error("remove issue article error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "issue-article-mutation",
+      err,
+      "Failed to update the issue article."
+    );
   }
 }

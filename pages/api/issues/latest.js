@@ -1,5 +1,6 @@
 // pages/api/issues/latest.js
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { respondWithApiError } from "../../../lib/apiError";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -34,8 +35,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, issue, articles });
   } catch (err) {
-    console.error("latest issue API error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "issue-latest",
+      err,
+      "Failed to load the latest issue."
+    );
   }
 }
-

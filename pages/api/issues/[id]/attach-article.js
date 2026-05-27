@@ -1,5 +1,6 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
 import { requireEditor } from "../../../../lib/adminAuth";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 function resolveIssueId(raw) {
   if (typeof raw === "string") return raw;
@@ -162,7 +163,12 @@ export default async function handler(req, res) {
       article: clonedArticle,
     });
   } catch (err) {
-    console.error("attach article to issue error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "issue-attach-article",
+      err,
+      "Failed to attach the article to the issue."
+    );
   }
 }

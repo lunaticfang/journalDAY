@@ -113,7 +113,12 @@ export default async function handler(req, res) {
       reviews = reviewRows || [];
     }
 
-    const reviewerIds = reviews
+    const visibleReviews =
+      auth.profile.role === "reviewer"
+        ? reviews.filter((review) => review.reviewer_id === auth.user.id)
+        : reviews;
+
+    const reviewerIds = visibleReviews
       .map((r) => r.reviewer_id)
       .filter(Boolean);
 
@@ -133,7 +138,7 @@ export default async function handler(req, res) {
       ok: true,
       manuscript,
       authors,
-      reviews,
+      reviews: visibleReviews,
       reviewers: reviewerProfiles,
       role: auth.profile.role,
       reviewWorkflowAvailable,

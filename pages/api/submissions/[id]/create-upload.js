@@ -1,4 +1,5 @@
 import { supabaseServer } from "../../../../lib/supabaseServer";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 const BUCKET =
   process.env.SUPABASE_BUCKET_MANUSCRIPTS ||
@@ -111,7 +112,12 @@ export default async function handler(req, res) {
       token: data.token,
     });
   } catch (err) {
-    console.error("create-upload revision error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "submission-create-upload-revision",
+      err,
+      "Failed to prepare the revision upload."
+    );
   }
 }
