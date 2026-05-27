@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 
 export default function AdminRequestAccessPage() {
   const [name, setName] = useState("");
@@ -142,7 +142,7 @@ export default function AdminRequestAccessPage() {
   );
 }
 
-const honeypotStyle = {
+const honeypotStyle: CSSProperties = {
   position: "absolute",
   left: "-10000px",
   top: "auto",
