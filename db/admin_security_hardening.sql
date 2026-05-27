@@ -3,6 +3,38 @@
 -- 2) Store admin access requests in a private table.
 -- 3) Store admin invites in a revocable, single-use table.
 
+create or replace function public.try_parse_jsonb(input_text text)
+returns jsonb
+language plpgsql
+as $$
+begin
+  if input_text is null then
+    return null;
+  end if;
+
+  return input_text::jsonb;
+exception
+  when others then
+    return null;
+end;
+$$;
+
+create or replace function public.try_parse_timestamptz(input_text text)
+returns timestamptz
+language plpgsql
+as $$
+begin
+  if input_text is null or btrim(input_text) = '' then
+    return null;
+  end if;
+
+  return input_text::timestamptz;
+exception
+  when others then
+    return null;
+end;
+$$;
+
 alter table profiles
   add column if not exists role text default 'author';
 
@@ -67,16 +99,26 @@ insert into admin_access_requests (
   reviewed_at,
   reviewed_by_email
 )
+with legacy_requests as (
+  select
+    key,
+    public.try_parse_jsonb(value) as payload
+  from site_content
+  where (
+      key like 'admin_access_request.%'
+      or key like 'private_admin_access_request.%'
+    )
+)
 select
-  coalesce(nullif(value::jsonb ->> 'name', ''), 'Unknown requester'),
-  lower(value::jsonb ->> 'email'),
-  coalesce(value::jsonb ->> 'message', ''),
-  coalesce(nullif(value::jsonb ->> 'status', ''), 'pending'),
-  coalesce((value::jsonb ->> 'created_at')::timestamptz, now()),
-  nullif(value::jsonb ->> 'updated_at', '')::timestamptz,
-  nullif(value::jsonb ->> 'reviewed_at', '')::timestamptz,
-  nullif(value::jsonb ->> 'reviewed_by_email', '')
-from site_content
-where key like 'admin_access_request.%'
-  and coalesce(value::jsonb ->> 'email', '') <> ''
+  coalesce(nullif(payload ->> 'name', ''), 'Unknown requester'),
+  lower(payload ->> 'email'),
+  coalesce(payload ->> 'message', ''),
+  coalesce(nullif(payload ->> 'status', ''), 'pending'),
+  coalesce(public.try_parse_timestamptz(payload ->> 'created_at'), now()),
+  public.try_parse_timestamptz(payload ->> 'updated_at'),
+  public.try_parse_timestamptz(payload ->> 'reviewed_at'),
+  nullif(payload ->> 'reviewed_by_email', '')
+from legacy_requests
+where payload is not null
+  and coalesce(payload ->> 'email', '') <> ''
 on conflict do nothing;

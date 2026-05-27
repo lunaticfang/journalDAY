@@ -1,13 +1,16 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireRole } from "../../../lib/adminAuth";
+import { respondWithApiError } from "../../../lib/apiError";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).end();
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   const { key, value } = req.body || {};
-  if (!key || !value) {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey || typeof value === "undefined") {
     return res.status(400).json({ error: "Missing key or value" });
   }
 
@@ -18,10 +21,16 @@ export default async function handler(req, res) {
 
   const { error } = await supabaseServer
     .from("site_content")
-    .upsert({ key, value });
+    .upsert({ key: normalizedKey, value });
 
   if (error) {
-    return res.status(500).json({ error: error.message });
+    return respondWithApiError(
+      res,
+      500,
+      "site-content-update",
+      error,
+      "Failed to save content entry."
+    );
   }
 
   res.status(200).json({ ok: true });

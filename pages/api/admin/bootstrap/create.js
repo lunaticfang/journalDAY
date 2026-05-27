@@ -11,6 +11,7 @@ import {
   normalizeEmail,
   validatePasswordStrength,
 } from "../../../../lib/authSecurity";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -69,9 +70,13 @@ export default async function handler(req, res) {
         });
 
       if (updateErr) {
-        return res
-          .status(500)
-          .json({ error: updateErr.message || "Could not update user." });
+        return respondWithApiError(
+          res,
+          500,
+          "admin-bootstrap-update-user",
+          updateErr,
+          "Could not update bootstrap account."
+        );
       }
 
       user = updatedUser.user;
@@ -84,16 +89,26 @@ export default async function handler(req, res) {
         });
 
       if (createErr) {
-        return res
-          .status(500)
-          .json({ error: createErr.message || "Could not create user." });
+        return respondWithApiError(
+          res,
+          500,
+          "admin-bootstrap-create-user",
+          createErr,
+          "Could not create bootstrap account."
+        );
       }
 
       user = createdUser.user;
     }
 
     if (!user?.id) {
-      return res.status(500).json({ error: "Could not resolve user id." });
+      return respondWithApiError(
+        res,
+        500,
+        "admin-bootstrap-resolve-user",
+        new Error("Bootstrap user resolved without id."),
+        "Could not resolve bootstrap account."
+      );
     }
 
     const normalizedOwnerEmail = getOwnerEmail().toLowerCase();
@@ -110,9 +125,13 @@ export default async function handler(req, res) {
     );
 
     if (profileErr) {
-      return res
-        .status(500)
-        .json({ error: profileErr.message || "Could not create admin profile." });
+      return respondWithApiError(
+        res,
+        500,
+        "admin-bootstrap-upsert-profile",
+        profileErr,
+        "Could not create bootstrap profile."
+      );
     }
 
     return res.status(200).json({
@@ -123,7 +142,12 @@ export default async function handler(req, res) {
       isOwnerEmail: assignedRole === OWNER_ROLE,
     });
   } catch (err) {
-    console.error("bootstrap create error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-bootstrap-create",
+      err,
+      "Failed to complete bootstrap setup."
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { getBootstrapStatus } from "../../../../lib/adminBootstrap";
+import { respondWithApiError } from "../../../../lib/apiError";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -13,7 +14,12 @@ export default async function handler(req, res) {
       ...status,
     });
   } catch (err) {
-    console.error("bootstrap status error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-bootstrap-status",
+      err,
+      "Could not load bootstrap status."
+    );
   }
 }

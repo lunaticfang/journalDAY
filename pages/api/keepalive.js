@@ -1,6 +1,8 @@
 import { supabaseServer } from "../../lib/supabaseServer";
 
 const CRON_SECRET = process.env.CRON_SECRET || process.env.KEEPALIVE_SECRET;
+const ALLOW_QUERY_CRON_SECRET =
+  String(process.env.ALLOW_QUERY_CRON_SECRET || "true").toLowerCase() !== "false";
 
 function hasValidSecret(req) {
   const headerSecretRaw = req.headers["x-cron-secret"];
@@ -11,7 +13,15 @@ function hasValidSecret(req) {
 
   if (!CRON_SECRET) return false;
   if (headerSecret && headerSecret === CRON_SECRET) return true;
-  if (typeof querySecret === "string" && querySecret === CRON_SECRET) return true;
+  // Backward-compatible fallback for existing cron setups that still pass
+  // secrets in the query string. Prefer x-cron-secret header in production.
+  if (
+    ALLOW_QUERY_CRON_SECRET &&
+    typeof querySecret === "string" &&
+    querySecret === CRON_SECRET
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -53,7 +63,7 @@ export default async function handler(req, res) {
     if (!touchedTable) {
       return res.status(500).json({
         ok: false,
-        error: lastError?.message || "No keepalive table probe succeeded",
+        error: "Keepalive table probe failed",
       });
     }
 
@@ -63,6 +73,6 @@ export default async function handler(req, res) {
       ts: new Date().toISOString(),
     });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message || String(err) });
+    return res.status(500).json({ ok: false, error: "Keepalive request failed" });
   }
 }

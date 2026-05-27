@@ -13,6 +13,8 @@ import {
 } from "../../../../lib/reviewerWorkflowShared";
 
 const CRON_SECRET = process.env.CRON_SECRET || process.env.KEEPALIVE_SECRET || "";
+const ALLOW_QUERY_CRON_SECRET =
+  String(process.env.ALLOW_QUERY_CRON_SECRET || "true").toLowerCase() !== "false";
 const REVIEW_SELECT =
   "id, manuscript_id, reviewer_id, recommendation, created_at, invited_at, due_at, last_reminder_at, decided_at";
 const REVIEW_WORKFLOW_DOWN_MESSAGE = `Reviewer workflow is not configured yet. ${getReviewerWorkflowMigrationHint()}`;
@@ -23,7 +25,13 @@ function hasValidCronSecret(req) {
   const headerSecret = String(req.headers["x-cron-secret"] || "").trim();
   const querySecret = String(req.query?.secret || "").trim();
 
-  return headerSecret === CRON_SECRET || querySecret === CRON_SECRET;
+  if (headerSecret === CRON_SECRET) {
+    return true;
+  }
+
+  // Backward-compatible fallback for existing cron setups that still pass
+  // secrets in the query string. Prefer x-cron-secret header in production.
+  return ALLOW_QUERY_CRON_SECRET && querySecret === CRON_SECRET;
 }
 
 export default async function handler(req, res) {

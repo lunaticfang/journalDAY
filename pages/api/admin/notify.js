@@ -1,5 +1,6 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireEditor } from "../../../lib/adminAuth";
+import { respondWithApiError } from "../../../lib/apiError";
 import {
   getTransactionalEmailProvider,
   sendTransactionalEmail,
@@ -117,7 +118,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true });
   } catch (err) {
-    console.error("admin notify error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-notify",
+      err,
+      "Failed to send admin notification."
+    );
   }
 }

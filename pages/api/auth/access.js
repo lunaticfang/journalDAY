@@ -5,6 +5,7 @@ import {
   isApprovedProfileRole,
   isOwnerProfile,
 } from "../../../lib/accessControl";
+import { respondWithApiError } from "../../../lib/apiError";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -44,7 +45,12 @@ export default async function handler(req, res) {
           : isApprovedProfileRole(profile, requestedRoles),
     });
   } catch (err) {
-    console.error("auth access error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "auth-access",
+      err,
+      "Failed to load access profile."
+    );
   }
 }

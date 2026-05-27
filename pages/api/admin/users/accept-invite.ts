@@ -5,17 +5,24 @@ import {
   hashInviteToken,
   randomPassword,
 } from "../../../../lib/adminInviteToken";
+import { findAuthUserByEmail } from "../../../../lib/adminBootstrap";
 import { sendTransactionalEmail } from "../../../../lib/transactionalEmail";
 import { respondWithApiError } from "../../../../lib/apiError";
 
-async function findAuthUserByEmail(email: string) {
-  const { data, error } = await supabaseServer.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  });
-  if (error) throw error;
-  return (data.users || []).find(
-    (u: any) => String(u.email || "").toLowerCase() === email.toLowerCase()
+function respondAcceptInvitePipelineError(
+  res: NextApiResponse,
+  step: string,
+  err: unknown,
+  fallbackMessage: string,
+  meta: Record<string, unknown> = {}
+) {
+  return respondWithApiError(
+    res,
+    500,
+    `admin-users-accept-invite-${step}`,
+    err,
+    fallbackMessage,
+    meta
   );
 }
 
@@ -73,7 +80,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .maybeSingle();
 
     if (inviteErr) {
-      return res.status(500).json({ error: inviteErr.message || "Could not load invite" });
+      return respondAcceptInvitePipelineError(
+        res,
+        "invite-lookup",
+        inviteErr,
+        "Could not validate invite token."
+      );
     }
 
     if (!invite) {
@@ -104,14 +116,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
 
       if (createErr) {
-        return res.status(500).json({ error: createErr.message || "Could not create user" });
+        return respondAcceptInvitePipelineError(
+          res,
+          "create-user",
+          createErr,
+          "Could not provision invited account.",
+          { email }
+        );
       }
 
       user = created.user;
     }
 
     if (!user?.id) {
-      return res.status(500).json({ error: "Could not resolve invited user id" });
+      return respondAcceptInvitePipelineError(
+        res,
+        "resolve-user-id",
+        new Error("Invited user resolved without id."),
+        "Could not resolve invited account."
+      );
     }
 
     const { error: profileErr } = await supabaseServer
@@ -127,7 +150,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       );
 
     if (profileErr) {
-      return res.status(500).json({ error: profileErr.message || "Failed to grant admin role" });
+      return respondAcceptInvitePipelineError(
+        res,
+        "grant-role",
+        profileErr,
+        "Could not grant admin access.",
+        { email, userId: user.id }
+      );
     }
 
     const baseUrl = getAppBaseUrl(req);
@@ -140,17 +169,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     if (linkErr) {
-      return res
-        .status(500)
-        .json({ error: linkErr.message || "Failed to generate password setup link" });
+      return respondAcceptInvitePipelineError(
+        res,
+        "password-link",
+        linkErr,
+        "Could not generate password setup link.",
+        { email }
+      );
     }
 
     const actionLink = linkData?.properties?.action_link;
     if (!actionLink) {
-      return res.status(500).json({ error: "No password setup link returned by auth provider" });
+      return respondAcceptInvitePipelineError(
+        res,
+        "missing-password-link",
+        new Error("Auth provider did not return action_link."),
+        "Could not prepare password setup link.",
+        { email }
+      );
     }
 
-    await sendSecondEmail(email, actionLink);
+    try {
+      await sendSecondEmail(email, actionLink);
+    } catch (emailErr) {
+      return respondAcceptInvitePipelineError(
+        res,
+        "send-activation-email",
+        emailErr,
+        "Could not send admin activation email.",
+        { email }
+      );
+    }
 
     const timestamp = new Date().toISOString();
 
@@ -163,11 +212,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("id", invite.id);
 
     if (inviteUpdateErr) {
-      return res.status(500).json({ error: inviteUpdateErr.message || "Failed to finalize invite" });
+      return respondAcceptInvitePipelineError(
+        res,
+        "mark-invite-used",
+        inviteUpdateErr,
+        "Could not finalize invite usage.",
+        { email, inviteId: invite.id }
+      );
     }
 
     if (invite.request_id) {
-      await supabaseServer
+      const { error: requestUpdateErr } = await supabaseServer
         .from("admin_access_requests")
         .update({
           status: "approved",
@@ -176,6 +231,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           reviewed_by_email: "invite-accepted",
         })
         .eq("id", invite.request_id);
+
+      if (requestUpdateErr) {
+        console.warn("admin request approval update after invite accept failed:", {
+          inviteId: invite.id,
+          requestId: invite.request_id,
+          message: requestUpdateErr.message,
+        });
+      }
     }
 
     return res.status(200).json({ ok: true });

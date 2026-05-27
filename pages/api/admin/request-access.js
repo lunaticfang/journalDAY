@@ -166,7 +166,7 @@ async function persistLegacyAdminRequest({
   clientFingerprint,
   userAgent,
 }) {
-  const key = `admin_access_request.${Date.now()}-${Math.random()
+  const key = `private_admin_access_request.${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
 

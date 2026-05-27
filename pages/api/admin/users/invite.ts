@@ -51,6 +51,23 @@ async function sendInviteEmail(recipient: string, approveUrl: string, inviterEma
   });
 }
 
+function respondInvitePipelineError(
+  res: NextApiResponse,
+  step: string,
+  err: unknown,
+  fallbackMessage: string,
+  meta: Record<string, unknown> = {}
+) {
+  return respondWithApiError(
+    res,
+    500,
+    `admin-users-invite-${step}`,
+    err,
+    fallbackMessage,
+    meta
+  );
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -83,12 +100,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (requestId) {
       const { data: existingRequest, error: requestError } = await supabaseServer
         .from("admin_access_requests")
-        .select("id, email")
+        .select("id, email, status")
         .eq("id", requestId)
         .maybeSingle();
 
       if (requestError) {
-        return res.status(500).json({ error: requestError.message || "Could not load request" });
+        return respondInvitePipelineError(
+          res,
+          "request-lookup",
+          requestError,
+          "Could not load admin access request.",
+          { requestId, email }
+        );
       }
 
       if (!existingRequest) {
@@ -97,6 +120,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (String(existingRequest.email || "").trim().toLowerCase() !== email) {
         return res.status(400).json({ error: "Request email does not match invite email" });
+      }
+
+      const requestStatus = String(existingRequest.status || "")
+        .trim()
+        .toLowerCase();
+      if (requestStatus && !["pending", "invited"].includes(requestStatus)) {
+        return res.status(400).json({
+          error: `Request is already ${requestStatus} and cannot be invited.`,
+        });
       }
     }
 
@@ -117,7 +149,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .eq("status", "pending");
 
     if (revokeErr) {
-      return res.status(500).json({ error: revokeErr.message || "Could not revoke prior invites" });
+      return respondInvitePipelineError(
+        res,
+        "revoke-existing",
+        revokeErr,
+        "Could not revoke prior pending invites.",
+        { email, requestId }
+      );
     }
 
     const { error: inviteErr } = await supabaseServer.from("admin_invites").insert({
@@ -131,13 +169,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     if (inviteErr) {
-      return res.status(500).json({ error: inviteErr.message || "Could not store admin invite" });
+      return respondInvitePipelineError(
+        res,
+        "store-invite",
+        inviteErr,
+        "Could not store admin invite.",
+        { email, requestId }
+      );
     }
 
     const baseUrl = getAppBaseUrl(req);
     const approveUrl = `${baseUrl}/admin-invite/accept?token=${encodeURIComponent(token)}`;
 
-    await sendInviteEmail(email, approveUrl, auth.user.email ?? null);
+    try {
+      await sendInviteEmail(email, approveUrl, auth.user.email ?? null);
+    } catch (emailErr) {
+      // Do not leave a "pending" invite row if email delivery failed.
+      await supabaseServer
+        .from("admin_invites")
+        .update({
+          status: "revoked",
+          revoked_at: new Date().toISOString(),
+          revoked_by: auth.user.id,
+          revoked_by_email: auth.user.email ?? auth.profile?.email ?? null,
+        })
+        .eq("token_hash", tokenHash)
+        .eq("status", "pending");
+
+      return respondInvitePipelineError(
+        res,
+        "email-send",
+        emailErr,
+        "Could not send invite email.",
+        { email, requestId }
+      );
+    }
 
     return res.status(200).json({ ok: true });
   } catch (err: any) {

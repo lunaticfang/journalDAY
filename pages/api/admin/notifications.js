@@ -1,5 +1,6 @@
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { requireRole } from "../../../lib/adminAuth";
+import { respondWithApiError } from "../../../lib/apiError";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -23,7 +24,12 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, notifications: data || [] });
   } catch (err) {
-    console.error("admin notifications error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    return respondWithApiError(
+      res,
+      500,
+      "admin-notifications",
+      err,
+      "Failed to load notifications."
+    );
   }
 }
