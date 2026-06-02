@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentClientAccess } from "../../../lib/clientPermissions";
 import PasswordField from "../../components/PasswordField";
@@ -18,6 +18,7 @@ type BootstrapStatus = {
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,6 +28,14 @@ export default function AdminLoginPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [bootstrapAvailable, setBootstrapAvailable] = useState(false);
+
+  function resolveNextPath() {
+    const next = String(searchParams?.get("next") || "").trim();
+    if (!next.startsWith("/") || next.startsWith("//")) {
+      return "/admin";
+    }
+    return next;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +48,7 @@ export default function AdminLoginPage() {
         ]);
 
         if (!cancelled && access.allowed) {
-          router.replace("/admin");
+          router.replace(resolveNextPath());
           return;
         }
 
@@ -59,7 +68,7 @@ export default function AdminLoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, searchParams]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -86,7 +95,7 @@ export default function AdminLoginPage() {
         );
       }
 
-      router.replace("/admin");
+      router.replace(resolveNextPath());
     } catch (err: any) {
       console.error("Admin login error:", err);
       if (
@@ -151,7 +160,7 @@ export default function AdminLoginPage() {
         <h1 className="auth-title">Admin Login</h1>
 
         <p className="auth-subtitle">
-          Approved staff sign in with email and password. New admins are still added through the existing request and invite flow.
+          Approved admins, editors, and reviewers sign in here with email and password. Reviewer assignments are completed inside the portal after sign-in.
         </p>
 
         {errorMsg && (

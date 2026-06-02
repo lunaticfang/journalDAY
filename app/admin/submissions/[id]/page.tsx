@@ -98,7 +98,9 @@ export default function AdminSubmissionDetail() {
       const session = data.session;
       const user = session?.user ?? null;
       if (!user) {
-        router.replace("/admin/login");
+        router.replace(
+          `/admin/login?next=${encodeURIComponent(`/admin/submissions/${manuscriptId}`)}`
+        );
         return;
       }
 
@@ -226,7 +228,7 @@ export default function AdminSubmissionDetail() {
       setNotice(
         json?.alreadyAssigned
           ? "That reviewer is already attached to this manuscript."
-          : `Reviewer assigned. Due ${formatReviewDueDate(
+          : `Reviewer assigned. They can sign in through the reviewer portal. Due ${formatReviewDueDate(
               json?.review?.due_at || assignDueDate || undefined
             )}.`
       );
@@ -499,6 +501,8 @@ export default function AdminSubmissionDetail() {
                 </button>
                 <p className="admin-muted">
                   Leave the date blank to use the default 14-day review window.
+                  If mail is configured, the reviewer will receive a portal link
+                  by email.
                 </p>
               </div>
             )}

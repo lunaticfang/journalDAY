@@ -190,7 +190,7 @@ export default function AdminPage() {
       const user = session?.user ?? null;
 
       if (!user) {
-        router.replace("/admin/login");
+        router.replace("/admin/login?next=%2Fadmin");
         return;
       }
 
@@ -329,7 +329,7 @@ export default function AdminPage() {
       setNotice(
         json?.alreadyAssigned
           ? "That reviewer is already attached to this manuscript."
-          : `Reviewer assigned. Due ${formatReviewDueDate(
+          : `Reviewer assigned. They can sign in through the reviewer portal. Due ${formatReviewDueDate(
               json?.review?.due_at || dueDate || undefined
             )}.`
       );
@@ -830,7 +830,8 @@ export default function AdminPage() {
                                     />
                                     <p className="admin-muted">
                                       Leave the date blank to use the default 14-day
-                                      review window.
+                                      review window. If mail is configured, the reviewer
+                                      will receive a portal link by email.
                                     </p>
                                   </div>
                                   <button

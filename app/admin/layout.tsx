@@ -24,7 +24,12 @@ export default function AdminLayout({
     (async () => {
       const access = await getCurrentClientAccess(["admin", "editor", "reviewer"]);
       if (!access.user) {
-        router.replace("/admin/login");
+        const next = encodeURIComponent(
+          typeof window !== "undefined"
+            ? `${pathname}${window.location.search}`
+            : pathname
+        );
+        router.replace(`/admin/login?next=${next}`);
         return;
       }
 
