@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 import { getCurrentClientAccess } from "../../../lib/clientPermissions";
 import PasswordField from "../../components/PasswordField";
@@ -18,7 +18,6 @@ type BootstrapStatus = {
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +29,10 @@ export default function AdminLoginPage() {
   const [bootstrapAvailable, setBootstrapAvailable] = useState(false);
 
   function resolveNextPath() {
-    const next = String(searchParams?.get("next") || "").trim();
+    const next =
+      typeof window !== "undefined"
+        ? String(new URLSearchParams(window.location.search).get("next") || "").trim()
+        : "";
     if (!next.startsWith("/") || next.startsWith("//")) {
       return "/admin";
     }
@@ -68,7 +70,7 @@ export default function AdminLoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, searchParams]);
+  }, [router]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
