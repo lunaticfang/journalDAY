@@ -13,6 +13,10 @@ export default function AdminLayout({
   const pathname = usePathname();
 
   useEffect(() => {
+    if (!pathname) {
+      return;
+    }
+
     if (
       pathname === "/admin/login" ||
       pathname === "/admin/bootstrap" ||
